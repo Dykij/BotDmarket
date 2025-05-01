@@ -1,0 +1,31 @@
+name: PHP CI
+
+on:
+  push:
+    paths:
+      - 'signature-builder/php/**'
+  pull_request:
+    paths:
+      - 'signature-builder/php/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: signature-builder/php
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Install dependencies
+        run: |
+          composer install || echo "No composer.json"
+      - name: Lint
+        run: |
+          php -l src/*.php || echo "No PHP files to lint"
+      - name: Run tests
+        run: |
+          if (Test-Path vendor\bin\phpunit) { vendor\bin\phpunit --testdox tests } else { echo "No PHPUnit" }

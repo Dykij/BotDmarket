@@ -1,0 +1,22 @@
+[MASTER]
+# Игнорируем ошибки OS.environ и другие частые проблемы
+ignored-classes=os
+
+[BASIC]
+# Разрешаем однобуквенные переменные
+variable-rgx=[a-z_][a-z0-9_]{0,30}$
+
+[TYPECHECK]
+# Игнорируем ошибки для модулей, которые могут быть недоступны
+ignored-modules=telegram
+
+[MESSAGES CONTROL]
+# Отключение предупреждений
+disable=
+    C0103, # invalid-name
+    C0111, # missing-docstring
+    W0212, # protected-access
+    W0613, # unused-argument (нужно для функций обработчиков Telegram)
+    E1101, # no-member (проблемы с os.environ)
+    C0303, # trailing-whitespace
+    C0330, # wrong-hanging-indentation

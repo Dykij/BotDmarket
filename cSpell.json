@@ -1,0 +1,45 @@
+{
+    "version": "0.2",
+    "language": "en,ru",
+    "words": [
+        "csgo",
+        "dmarket",
+        "dotenv",
+        "dota",
+        "hashlib",
+        "hexdigest",
+        "hmac",
+        "httpx",
+        "mypy",
+        "pylint",
+        "pyproject",
+        "pyrightconfig",
+        "pytest",
+        "pwsh",
+        "ruff",
+        "urlencode"
+    ],
+    "ignorePaths": [
+        "node_modules",
+        "**/node_modules/**",
+        "**/bower_components/**",
+        "**/*.min.*",
+        ".git",
+        "dist",
+        "build"
+    ],
+    "ignoreRegExpList": [
+        "\\(.*\\)",
+        "\\[.*\\]",
+        "Cyrillic"
+    ],
+    "ignoreWords": [],
+    "import": [],
+    "enableFiletypes": [
+        "markdown",
+        "plaintext",
+        "python",
+        "json",
+        "jsonc"
+    ]
+}

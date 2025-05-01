@@ -1,0 +1,356 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DMarket trading API",
+    "description": "Welcome to the DMarket Trading API section. Our JSON-based API enables you to manage your DMarket inventory through the methods featured below. In order to use the API, please generate your personal API keys in the account settings.\n\nRequest signature instructions\n\nA valid HTTP request to the trading API must include 3 request headers:\n\n1) X-Api-Key: public key (must be a hex string in lowercase) To get you your own public key, use https://dmarket.com/ (details : https://dmarket.com/faq#tradingAPI)\n2) X-Sign-Date: timestamp or current time Example: 1605619994. Must not be older than 2 minutes from the request time.\n3) X-Request-Sign: signature\n\nThe SHA256 signature scheme is used for signing requests and proving items’ origin and ownership through public-private key pairs. Private and public keys diversification is aimed to provide secure back-to-back communication and the ability to rotate keys in case of security breaches on any side of the integration.\n\nTo make a signature, take the following steps:\n1) Build non-signed string formula (HTTP Method) + (Route path + HTTP query params) + (body string) + (timestamp) ). Example: POST/get-item?Amount=%220.25%22&Limit=%22100%22&Offset=%22150%22&Order=%22desc%22&1605619994)\n2) After you’ve created a non-signed string with a default concatenation method, sign it with NACL https://en.wikipedia.org/wiki/NaCl_(software) using you secret key.\n3) Encode the result string with hex\n4) Add your signature string to HTTP request headers X-Request-Sign (dmar ed25519 signature)\n\nYou can check out examples on https://github.com/dmarket/dm-trading-tools.\n\nDMarket uses rate limiting to control the rate of API requests. Please read FAQ for details https://dmarket.com/faq#startUsingTradingAPI.",
+    "version": "v1.0.0-oas3"
+  },
+  "servers": [
+    { "url": "https://api.dmarket.com" }
+  ],
+  "paths": {
+    "/price-aggregator/v1/aggregated-prices": {
+      "get": {
+        "tags": ["Buy items"],
+        "summary": "Get the best market prices grouped by item market title.",
+        "operationId": "GetAggregatedPrices",
+        "parameters": [
+          {
+            "name": "Titles",
+            "in": "query",
+            "description": "Items names on market.",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "array", "items": { "type": "string" } }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limit.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "number", "default": 100 }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offset.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/aggregatedPrices" }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/runtimeError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/price-aggregator/v1/last-sales": {
+      "get": {
+        "tags": ["Aggregator"],
+        "summary": "Get last sales for a list of items.",
+        "operationId": "Aggregator_GetLastSales",
+        "parameters": [
+          {
+            "name": "Titles",
+            "in": "query",
+            "description": "Item names on market.",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "array", "items": { "type": "string" } }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limit.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "number", "default": 100 }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offset.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/lastSales" }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/runtimeError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account/v1/user": {
+      "get": {
+        "tags": ["Account"],
+        "summary": "Getting general user profile information.",
+        "operationId": "getUserByTokenHandler",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/representation.UserAccountResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/representation.UserAccountResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/api.ErrorRepresentation" }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/api.ErrorRepresentation" }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/representation.UserAccountResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "aggregatedPrices": {
+        "type": "object",
+        "properties": {
+          "Error": { "type": "string" },
+          "Total": { "type": "number" },
+          "AggregatedTitles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/aggregatedPrice" }
+          }
+        }
+      },
+      "aggregatedPrice": {
+        "type": "object",
+        "properties": {
+          "MarketHashName": { "type": "string" },
+          "Offers": { "$ref": "#/components/schemas/bestPrice" },
+          "Orders": { "$ref": "#/components/schemas/bestPrice" }
+        }
+      },
+      "bestPrice": {
+        "type": "object",
+        "properties": {
+          "BestPrice": { "type": "string" },
+          "Count": { "type": "number" }
+        }
+      },
+      "lastSales": {
+        "type": "object",
+        "properties": {
+          "Error": { "type": "string" },
+          "Total": { "type": "number" },
+          "LastSales": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/lastSale" }
+          }
+        }
+      },
+      "lastSale": {
+        "type": "object",
+        "properties": {
+          "MarketHashName": { "type": "string" },
+          "Sales": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/saleInfo" }
+          }
+        }
+      },
+      "saleInfo": {
+        "type": "object",
+        "properties": {
+          "Price": { "type": "string" },
+          "Currency": { "type": "string" },
+          "Timestamp": { "type": "integer", "format": "int64" },
+          "OrderType": { "type": "string" }
+        }
+      },
+      "runtimeError": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "code": { "type": "integer", "format": "int32" },
+          "message": { "type": "string" },
+          "details": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "representation.UserAccountResponse": {
+        "type": "object",
+        "required": [
+          "agreementsInfo",
+          "countryCode",
+          "countryCodeFromIP",
+          "email",
+          "features",
+          "ga_client_id",
+          "hasActiveSubscriptions",
+          "hasHistoryEvents",
+          "id",
+          "imageUrl",
+          "isEmailVerified",
+          "isPasswordSet",
+          "level",
+          "linkedGames",
+          "migrated",
+          "publicKey",
+          "regType",
+          "restrictions",
+          "settings",
+          "steamAccount",
+          "twitchAccount",
+          "username"
+        ],
+        "properties": {
+          "agreementsInfo": { "$ref": "#/components/schemas/representation.AgreementsInfo" },
+          "countryCode": { "type": "string" },
+          "countryCodeFromIP": { "type": "string" },
+          "email": { "type": "string" },
+          "features": { "type": "array", "items": { "$ref": "#/components/schemas/representation.Feat" } },
+          "ga_client_id": { "type": "string" },
+          "hasActiveSubscriptions": { "type": "boolean" },
+          "hasHistoryEvents": { "type": "boolean" },
+          "id": { "type": "string" },
+          "imageUrl": { "type": "string" },
+          "isEmailVerified": { "type": "boolean" },
+          "isPasswordSet": { "type": "boolean" },
+          "level": { "type": "integer", "format": "int64" },
+          "linkedGames": { "type": "array", "items": { "$ref": "#/components/schemas/representation.LinkedGame" } },
+          "migrated": { "type": "boolean" },
+          "publicKey": { "type": "string" },
+          "regType": { "type": "string", "enum": ["steam", "user"] },
+          "restrictions": { "type": "array", "items": { "$ref": "#/components/schemas/representation.Restriction" } },
+          "settings": { "$ref": "#/components/schemas/representation.UserAccountSettingsResponse" },
+          "steamAccount": { "$ref": "#/components/schemas/representation.SteamAccount" },
+          "twitchAccount": { "$ref": "#/components/schemas/representation.TwitchAccount" },
+          "username": { "type": "string" }
+        }
+      },
+      "representation.AgreementsInfo": {
+        "type": "object",
+        "required": ["isConfirmed", "updated"],
+        "properties": {
+          "isConfirmed": { "type": "boolean" },
+          "updated": { "type": "integer", "format": "int64" }
+        }
+      },
+      "representation.Feat": {
+        "type": "object",
+        "required": ["enabled", "name"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "name": { "type": "string", "enum": ["P2P", "P2PToggleVisible", "P2POnboardingSeen"] }
+        }
+      },
+      "representation.LinkedGame": {
+        "type": "object",
+        "required": ["gameId", "gameUserId", "username"],
+        "properties": {
+          "gameId": { "type": "string" },
+          "gameUserId": { "type": "string" },
+          "username": { "type": "string" }
+        }
+      },
+      "representation.Restriction": {
+        "type": "object",
+        "required": ["expirationTime", "name"],
+        "properties": {
+          "expirationTime": { "type": "integer", "format": "int64" },
+          "name": { "type": "string", "enum": ["P2POfferCreation"] }
+        }
+      },
+      "representation.UserAccountSettingsResponse": {
+        "type": "object",
+        "required": ["enabledDeviceConfirmation", "isSubscribedToNewsletters", "targetsLimit", "tradingApiToken"],
+        "properties": {
+          "enabledDeviceConfirmation": { "type": "boolean" },
+          "isSubscribedToNewsletters": { "type": "boolean" },
+          "targetsLimit": { "type": "integer", "format": "int32" },
+          "tradingApiToken": { "type": "string" }
+        }
+      },
+      "representation.SteamAccount": {
+        "type": "object",
+        "required": ["apiKey", "apiKeyStatus", "icon", "isProfilePrivate", "level", "steamId", "tradeUrl", "username"],
+        "properties": {
+          "apiKey": { "type": "string" },
+          "apiKeyStatus": { "type": "string", "enum": ["New", "Verified", "Invalid"] },
+          "icon": { "type": "string" },
+          "isProfilePrivate": { "type": "boolean" },
+          "level": { "type": "integer", "format": "int64" },
+          "steamId": { "type": "string" },
+          "tradeUrl": { "type": "string" },
+          "username": { "type": "string" }
+        }
+      },
+      "representation.TwitchAccount": {
+        "type": "object",
+        "required": ["icon", "userId", "username"],
+        "properties": {
+          "icon": { "type": "string" },
+          "userId": { "type": "string" },
+          "username": { "type": "string" }
+        }
+      }
+    }
+  }
+}

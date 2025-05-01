@@ -1,0 +1,15 @@
+{
+  "458765683": {
+    "language": "ru",
+    "api_key": "",
+    "api_secret": "",
+    "auto_trading_enabled": false,
+    "trade_settings": {
+      "min_profit": 2.0,
+      "max_price": 50.0,
+      "max_trades": 3,
+      "risk_level": "medium"
+    },
+    "last_activity": 1746114927.9610775
+  }
+}

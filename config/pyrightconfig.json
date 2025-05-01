@@ -1,0 +1,11 @@
+{
+  "typeCheckingMode": "off",
+  "reportMissingImports": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnusedVariable": "none",
+  "useLibraryCodeForTypes": true,
+  "reportOptionalMemberAccess": false
+}

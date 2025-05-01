@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dmarket-tools"
+version = "0.1.0"
+description = "Tools for working with DMarket API"
+readme = "README.md"
+authors = [
+    {name = "DM Trading Tools Team", email = "example@example.com"},
+]
+requires-python = ">=3.8"
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/dm-trading-tools"
+"Bug Tracker" = "https://github.com/yourusername/dm-trading-tools/issues"
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pylint.messages_control]
+disable = [
+    "import-error",
+    "no-member",
+    "unused-argument",
+    "missing-module-docstring",
+    "missing-function-docstring",
+    "wrong-import-order",
+    "invalid-name"
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+follow_imports = "silent"
