@@ -21,10 +21,10 @@ def mock_update():
     update.message.from_user = MagicMock(spec=User)
     update.message.from_user.id = 12345
     update.message.chat_id = 12345
-    
+
     # Эти атрибуты нужны только для callback_queries
     update.callback_query = None
-    
+
     return update
 
 
@@ -33,7 +33,7 @@ def mock_callback_query():
     """Create a mock Update object with CallbackQuery for button callbacks."""
     update = MagicMock(spec=Update)
     update.message = None
-    
+
     query = MagicMock(spec=CallbackQuery)
     query.data = "test_callback"
     query.from_user = MagicMock(spec=User)
@@ -43,9 +43,9 @@ def mock_callback_query():
     query.answer = AsyncMock()
     query.edit_message_text = AsyncMock()
     query.edit_message_reply_markup = AsyncMock()
-    
+
     update.callback_query = query
-    
+
     return update
 
 
@@ -61,7 +61,7 @@ def mock_context():
 async def test_start_command(mock_update, mock_context):
     """Тестирование команды /start."""
     await start(mock_update, mock_context)
-    
+
     mock_update.message.reply_text.assert_called_once()
     args, _ = mock_update.message.reply_text.call_args
     assert "Добро пожаловать" in args[0]
@@ -72,7 +72,7 @@ async def test_start_command(mock_update, mock_context):
 async def test_help_command(mock_update, mock_context):
     """Тестирование команды /help."""
     await help_command(mock_update, mock_context)
-    
+
     mock_update.message.reply_text.assert_called_once()
     args, _ = mock_update.message.reply_text.call_args
     assert "Список доступных команд" in args[0]
@@ -86,11 +86,20 @@ async def test_help_command(mock_update, mock_context):
 @patch("src.telegram_bot.bot_v2.DMARKET_SECRET_KEY", "test_secret")
 async def test_dmarket_status_with_keys(mock_update, mock_context):
     """Тестирование команды /dmarket при наличии ключей API."""
+    # Создаем мок для возвращаемого сообщения
+    message_mock = AsyncMock()
+    mock_update.message.reply_text.return_value = message_mock
+
     await dmarket_status(mock_update, mock_context)
-    
-    mock_update.message.reply_text.assert_called_once()
-    args, _ = mock_update.message.reply_text.call_args
-    assert "API ключи настроены" in args[0]
+
+    # Проверяем, что reply_text вызывается с правильным промежуточным сообщением
+    mock_update.message.reply_text.assert_called_once_with("Проверка статуса API DMarket...")
+
+    # Проверяем вызов edit_text на возвращенном сообщении
+    message_mock.edit_text.assert_called_once()
+    args, _ = message_mock.edit_text.call_args
+    assert "✅ API ключи настроены!" in args[0]
+    assert "API endpoint доступен" in args[0]
 
 
 @pytest.mark.asyncio
@@ -98,11 +107,20 @@ async def test_dmarket_status_with_keys(mock_update, mock_context):
 @patch("src.telegram_bot.bot_v2.DMARKET_SECRET_KEY", "")
 async def test_dmarket_status_without_keys(mock_update, mock_context):
     """Тестирование команды /dmarket без ключей API."""
+    # Создаем мок для возвращаемого сообщения
+    message_mock = AsyncMock()
+    mock_update.message.reply_text.return_value = message_mock
+
     await dmarket_status(mock_update, mock_context)
-    
-    mock_update.message.reply_text.assert_called_once()
-    args, _ = mock_update.message.reply_text.call_args
-    assert "API ключи не настроены" in args[0]
+
+    # Проверяем, что reply_text вызывается с правильным промежуточным сообщением
+    mock_update.message.reply_text.assert_called_once_with("Проверка статуса API DMarket...")
+
+    # Проверяем вызов edit_text на возвращенном сообщении
+    message_mock.edit_text.assert_called_once()
+    args, _ = message_mock.edit_text.call_args
+    assert "❌ API ключи не настроены" in args[0]
+    assert "Пожалуйста, установите" in args[0]
 
 
 @pytest.mark.asyncio
@@ -111,13 +129,13 @@ async def test_button_callback_arbitrage(mock_get_keyboard, mock_callback_query,
     """Тестирование обработки коллбэка для кнопки арбитража."""
     mock_callback_query.callback_query.data = "arbitrage"
     mock_get_keyboard.return_value = MagicMock(spec=InlineKeyboardMarkup)
-    
+
     await button_callback_handler(mock_callback_query, mock_context)
-    
+
     mock_callback_query.callback_query.answer.assert_called_once()
     mock_callback_query.callback_query.edit_message_text.assert_called_once()
     mock_get_keyboard.assert_called_once()
-    
+
     args, _ = mock_callback_query.callback_query.edit_message_text.call_args
     assert "Выберите режим арбитража" in args[0]
 
@@ -128,13 +146,13 @@ async def test_button_callback_select_game(mock_get_keyboard, mock_callback_quer
     """Тестирование обработки коллбэка для выбора игры."""
     mock_callback_query.callback_query.data = "select_game"
     mock_get_keyboard.return_value = MagicMock(spec=InlineKeyboardMarkup)
-    
+
     await button_callback_handler(mock_callback_query, mock_context)
-    
+
     mock_callback_query.callback_query.answer.assert_called_once()
     mock_callback_query.callback_query.edit_message_text.assert_called_once()
     mock_get_keyboard.assert_called_once()
-    
+
     args, _ = mock_callback_query.callback_query.edit_message_text.call_args
     assert "Выберите игру" in args[0]
 
@@ -144,9 +162,9 @@ async def test_button_callback_select_game(mock_get_keyboard, mock_callback_quer
 async def test_button_callback_auto_start(mock_start_auto, mock_callback_query, mock_context):
     """Тестирование обработки коллбэка для запуска автоматического арбитража."""
     mock_callback_query.callback_query.data = "auto_start:auto_medium"
-    
+
     await button_callback_handler(mock_callback_query, mock_context)
-    
+
     mock_start_auto.assert_called_once_with(
         mock_callback_query.callback_query, mock_context, "auto_medium"
     )
@@ -158,9 +176,9 @@ async def test_button_callback_auto_start(mock_start_auto, mock_callback_query, 
 async def test_button_callback_paginate(mock_show_stats, mock_pagination_manager, mock_callback_query, mock_context):
     """Тестирование обработки коллбэка для пагинации."""
     mock_callback_query.callback_query.data = "paginate:next:auto_medium"
-    
+
     await button_callback_handler(mock_callback_query, mock_context)
-    
+
     # Для auto режима должен быть вызван show_auto_stats
     mock_show_stats.assert_called_once_with(
         mock_callback_query.callback_query, mock_context

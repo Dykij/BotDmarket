@@ -1,18 +1,29 @@
+"""DMarket API client module for interacting with DMarket API.
+
+This module provides an asynchronous client for DMarket API, including:
+- Signature generation for authenticated requests
+- Rate limiting and retry logic
+- Methods for market operations (get items, buy, sell, inventory, balance)
+- Error handling and logging
+
+Example usage:
+
+    from src.dmarket.dmarket_api import DMarketAPI
+    api = DMarketAPI(public_key, secret_key)
+    headers = api._generate_signature("POST", "/exchange/v1/target/create", body_json)
+
+See README.md and docs/rate_limiter_and_api_handling_guide.md for details.
 """
-DMarket API client module for interacting with DMarket API.
-"""
-import time
-import json
-import hmac
-import hashlib
-import logging
 import asyncio
-from typing import Any, Dict, Optional, List, Union
+import hashlib
+import hmac
+import json
+import logging
+import time
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
-from tenacity import retry_if_exception_type, retry_if_result
 
 from src.utils.rate_limiter import RateLimiter
 
@@ -20,10 +31,19 @@ logger = logging.getLogger(__name__)
 
 
 class DMarketAPI:
+    """Асинхронный клиент для работы с DMarket API.
+
+    Основные возможности:
+    - Генерация подписей для приватных запросов
+    - Асинхронные методы для работы с маркетом, инвентарём, балансом
+    - Встроенный rate limiting и автоматические повторы при ошибках
+    - Логирование и обработка ошибок
+
+    Пример:
+        api = DMarketAPI(public_key, secret_key)
+        items = await api.get_market_items(game="csgo")
     """
-    DMarket API client for interacting with the DMarket API service.
-    This class provides methods to sign requests and interact with the API endpoints.
-    """
+
     def __init__(
         self,
         public_key: str,
@@ -31,11 +51,10 @@ class DMarketAPI:
         api_url: str = "https://api.dmarket.com",
         max_retries: int = 3,
         connection_timeout: float = 30.0,
-        pool_limits: Optional[httpx.Limits] = None,
-        retry_codes: List[int] = None
+        pool_limits: httpx.Limits | None = None,
+        retry_codes: list[int] = None,
     ):
-        """
-        Initialize DMarket API client.
+        """Initialize DMarket API client.
 
         Args:
             public_key: DMarket API public key
@@ -45,49 +64,50 @@ class DMarketAPI:
             connection_timeout: Connection timeout in seconds
             pool_limits: Connection pool limits
             retry_codes: HTTP status codes to retry on
+
         """
         self.public_key = public_key
         self.secret_key = secret_key.encode("utf-8") if secret_key else b""
         self.api_url = api_url
         self.max_retries = max_retries
         self.connection_timeout = connection_timeout
-        
+
         # Default retry codes: server errors and too many requests
         self.retry_codes = retry_codes or [429, 500, 502, 503, 504]
-        
+
         # Connection pool settings
         self.pool_limits = pool_limits or httpx.Limits(
             max_connections=100,
-            max_keepalive_connections=20
+            max_keepalive_connections=20,
         )
-        
+
         # HTTP client
         self._client = None
-        
+
         # Initialize RateLimiter with authorization check
         self.rate_limiter = RateLimiter(
-            is_authorized=bool(public_key and secret_key)
+            is_authorized=bool(public_key and secret_key),
         )
         logger.info(
             f"Initialized DMarketAPI client "
-            f"(authorized: {'yes' if public_key and secret_key else 'no'})"
+            f"(authorized: {'yes' if public_key and secret_key else 'no'})",
         )
-    
+
     async def __aenter__(self):
         """Context manager to use the client with async with."""
         await self._get_client()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Close client when exiting context manager."""
         await self._close_client()
-        
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=self.connection_timeout,
-                limits=self.pool_limits
+                limits=self.pool_limits,
             )
         return self._client
 
@@ -102,35 +122,38 @@ class DMarketAPI:
         method: str,
         path: str,
         body: str = "",
-    ) -> Dict[str, str]:
-        """
-        Generate signature for DMarket API requests.
-        
+    ) -> dict[str, str]:
+        """Генерирует подпись для приватных запросов DMarket API.
+
         Args:
-            method: HTTP method
-            path: API path
-            body: Request body
-            
+            method: HTTP-метод ("GET", "POST" и т.д.)
+            path: Путь запроса (например, "/exchange/v1/target/create")
+            body: Тело запроса (строка JSON)
+
         Returns:
-            Headers with authentication data
+            dict: Заголовки с подписью и ключом API
+
+        Пример:
+            headers = api._generate_signature("POST", "/exchange/v1/target/create", body_json)
+
         """
         if not self.public_key or not self.secret_key:
             return {"Content-Type": "application/json"}
-        
+
         # Generate signature string
         timestamp = str(int(time.time()))
         string_to_sign = timestamp + method + path
-        
+
         if body:
             string_to_sign += body
-        
+
         # Create signature using HMAC SHA256
         signature = hmac.new(
             self.secret_key,
             string_to_sign.encode("utf-8"),
-            hashlib.sha256
+            hashlib.sha256,
         ).hexdigest()
-        
+
         # Return headers with authentication data
         return {
             "X-Api-Key": self.public_key,
@@ -144,25 +167,28 @@ class DMarketAPI:
         self,
         method: str,
         path: str,
-        params: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Execute request to DMarket API with retry mechanism.
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Выполняет запрос к DMarket API с автоматическими повторами и учётом лимитов.
 
         Args:
-            method: HTTP method (GET, POST etc)
-            path: API method path without domain
-            params: Request parameters for GET
-            data: Data for POST request
+            method: HTTP-метод ("GET", "POST" и т.д.)
+            path: Путь запроса без домена
+            params: Параметры для GET-запроса
+            data: Данные для POST/PUT-запроса
 
         Returns:
-            API response as dict
+            dict: Ответ API
+
+        Пример:
+            response = await api._request("GET", "/marketplace-api/v1/items", params={...})
+
         """
         url = f"{self.api_url}{path}"
         attempts = 0
         last_exception = None
-        
+
         # Determine endpoint type for rate limiting
         endpoint_type = self.rate_limiter.get_endpoint_type(path)
 
@@ -170,25 +196,27 @@ class DMarketAPI:
         if params and method.upper() == "GET":
             query_string = urlencode(params)
             url = f"{url}?{query_string}"
-            
+
         # Convert body to JSON for POST requests
         body = ""
         if data and method.upper() in ["POST", "PUT"]:
             body = json.dumps(data)
 
         headers = self._generate_signature(method, path, body)
-        
+
         # Get client for connection pooling
         client = await self._get_client()
-        
+
         while attempts < self.max_retries:
             try:
                 # Wait if needed to respect rate limits
                 await self.rate_limiter.wait_if_needed(endpoint_type)
-                
+
                 # Log request details
-                logger.debug(f"API request: {method} {path} (attempt {attempts+1}/{self.max_retries})")
-                
+                logger.debug(
+                    f"API request: {method} {path} (attempt {attempts+1}/{self.max_retries})"
+                )
+
                 # Send request based on method
                 if method.upper() == "GET":
                     response = await client.get(url, headers=headers)
@@ -200,16 +228,18 @@ class DMarketAPI:
                     response = await client.delete(url, headers=headers)
                 else:
                     raise ValueError(f"Unsupported method: {method}")
-                
+
                 # Update rate limiter with headers from response
                 self.rate_limiter.update_from_headers(response.headers)
-                  # Raise exception for error status codes to trigger retry
+                # Raise exception for error status codes to trigger retry
                 # Проверяем, является ли raise_for_status корутиной
-                if callable(response.raise_for_status) and asyncio.iscoroutinefunction(response.raise_for_status):
+                if callable(response.raise_for_status) and asyncio.iscoroutinefunction(
+                    response.raise_for_status
+                ):
                     await response.raise_for_status()
                 else:
                     response.raise_for_status()
-                
+
                 try:
                     # Parse JSON response
                     json_response = response.json()
@@ -218,72 +248,77 @@ class DMarketAPI:
                     logger.error(f"Invalid JSON response: {response.status_code}")
                     return {
                         "error": "Invalid JSON response",
-                        "status_code": response.status_code
+                        "status_code": response.status_code,
                     }
-                    
+
             except httpx.HTTPStatusError as e:
                 # Check if this error is retryable based on status code
                 attempts += 1
                 last_exception = e
-                
+
                 if e.response.status_code in self.retry_codes:
                     logger.warning(
                         f"Retryable HTTP error {e.response.status_code} on {method} {path}. "
-                        f"Attempt {attempts}/{self.max_retries}"
+                        f"Attempt {attempts}/{self.max_retries}",
                     )
-                    await asyncio.sleep(2 ** attempts)  # Exponential backoff
+                    await asyncio.sleep(2**attempts)  # Exponential backoff
                     continue
-                else:
-                    # Non-retryable error
-                    logger.error(f"HTTP error {e.response.status_code} on {method} {path}")
-                    return {
-                        "error": f"HTTP error: {e.response.status_code}",
-                        "details": e.response.text
-                    }
-                    
+                # Non-retryable error
+                logger.error(f"HTTP error {e.response.status_code} on {method} {path}")
+                return {
+                    "error": f"HTTP error: {e.response.status_code}",
+                    "details": e.response.text,
+                }
+
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
                 # Connection errors are always retryable
                 attempts += 1
                 last_exception = e
-                
+
                 logger.warning(
                     f"Connection error on {method} {path}. "
-                    f"Attempt {attempts}/{self.max_retries}"
+                    f"Attempt {attempts}/{self.max_retries}",
                 )
-                await asyncio.sleep(2 ** attempts)  # Exponential backoff
+                await asyncio.sleep(2**attempts)  # Exponential backoff
                 continue
-                
+
             except Exception as e:
                 # Unexpected error, not retrying
-                logger.error(f"Unexpected error on {method} {path}: {str(e)}")
+                logger.error(f"Unexpected error on {method} {path}: {e!s}")
                 return {"error": str(e)}
-                
+
         # All retries failed
-        logger.error(f"All {self.max_retries} request attempts failed for {method} {path}")
+        logger.error(
+            f"All {self.max_retries} request attempts failed for {method} {path}"
+        )
         if last_exception:
-            logger.error(f"Last error: {str(last_exception)}")
-            
+            logger.error(f"Last error: {last_exception!s}")
+
         return {"error": f"Request failed after {self.max_retries} attempts"}
 
     def _should_retry(self, exception: Exception) -> bool:
-        """
-        Determine if the request should be retried based on the exception.
-        
-        Args:
-            exception: The exception that occurred
-            
-        Returns:
-            Boolean indicating if the request should be retried
-        """
-        if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
-            return exception.response.status_code in self.retry_codes
-        return isinstance(exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout))
+        """Определяет, стоит ли повторять запрос при возникновении исключения.
 
-    async def get_balance(self) -> Dict[str, Any]:
+        Args:
+            exception: Исключение
+
+        Returns:
+            bool: True, если запрос стоит повторить
+
+        """
+        if hasattr(exception, "response") and hasattr(
+            exception.response, "status_code"
+        ):
+            return exception.response.status_code in self.retry_codes
+        return isinstance(
+            exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)
+        )
+
+    async def get_balance(self) -> dict[str, Any]:
         """Get account balance."""
         return await self._request(
             "GET",
-            "/account/v1/balance"
+            "/account/v1/balance",
         )
 
     async def get_market_items(
@@ -292,13 +327,12 @@ class DMarketAPI:
         limit: int = 100,
         offset: int = 0,
         currency: str = "USD",
-        price_from: Optional[float] = None,
-        price_to: Optional[float] = None,
-        title: Optional[str] = None,
-        sort: str = "price"
-    ) -> Dict[str, Any]:
-        """
-        Get items from the marketplace.
+        price_from: float | None = None,
+        price_to: float | None = None,
+        title: str | None = None,
+        sort: str = "price",
+    ) -> dict[str, Any]:
+        """Get items from the marketplace.
 
         Args:
             game: Game name (csgo, dota2, tf2, rust etc)
@@ -312,6 +346,7 @@ class DMarketAPI:
 
         Returns:
             Items as dict
+
         """
         params = {
             "gameId": game,
@@ -319,37 +354,36 @@ class DMarketAPI:
             "offset": offset,
             "currency": currency,
         }
-        
+
         if price_from is not None:
             params["priceFrom"] = str(int(price_from * 100))  # Price in cents
-            
+
         if price_to is not None:
             params["priceTo"] = str(int(price_to * 100))  # Price in cents
-            
+
         if title:
             params["title"] = title
-            
+
         if sort:
             params["orderBy"] = sort
-            
+
         return await self._request(
             "GET",
             "/marketplace-api/v1/items",
-            params=params
+            params=params,
         )
 
     async def get_all_market_items(
-        self, 
+        self,
         game: str = "csgo",
         max_items: int = 1000,
         currency: str = "USD",
-        price_from: Optional[float] = None,
-        price_to: Optional[float] = None,
-        title: Optional[str] = None,
-        sort: str = "price"
-    ) -> List[Dict[str, Any]]:
-        """
-        Get all items from the marketplace using pagination.
+        price_from: float | None = None,
+        price_to: float | None = None,
+        title: str | None = None,
+        sort: str = "price",
+    ) -> list[dict[str, Any]]:
+        """Get all items from the marketplace using pagination.
 
         Args:
             game: Game name (csgo, dota2, tf2, rust etc)
@@ -362,12 +396,13 @@ class DMarketAPI:
 
         Returns:
             List of all items as dict
+
         """
         all_items = []
         limit = 100  # Maximum limit per request
         offset = 0
         total_fetched = 0
-        
+
         while total_fetched < max_items:
             response = await self.get_market_items(
                 game=game,
@@ -377,57 +412,57 @@ class DMarketAPI:
                 price_from=price_from,
                 price_to=price_to,
                 title=title,
-                sort=sort
+                sort=sort,
             )
-            
-            items = response.get('items', [])
+
+            items = response.get("items", [])
             if not items:
                 break
-                
+
             all_items.extend(items)
             total_fetched += len(items)
             offset += limit
-            
+
             # If we received less than limit items, there are no more items
             if len(items) < limit:
                 break
-                
+
         return all_items[:max_items]
 
     async def buy_item(
         self,
         market_hash_name: str,
         price: float,
-        game: str = "csgo"
-    ) -> Dict[str, Any]:
-        """
-        Buy an item from the marketplace.
-        
+        game: str = "csgo",
+    ) -> dict[str, Any]:
+        """Buy an item from the marketplace.
+
         Args:
             market_hash_name: Item market hash name
             price: Maximum price to pay
             game: Game name (csgo, dota2, tf2, rust etc)
-            
+
         Returns:
             Purchase result as dict
+
         """
         # First find the item
         response = await self.get_market_items(
             game=game,
             title=market_hash_name,
-            limit=1
+            limit=1,
         )
-        
-        items = response.get('items', [])
+
+        items = response.get("items", [])
         if not items:
             return {"error": "Item not found"}
-            
+
         item = items[0]
         item_id = item.get("itemId")
-        
+
         if not item_id:
             return {"error": "Invalid item data"}
-            
+
         # Create offer
         data = {
             "targets": [
@@ -437,34 +472,34 @@ class DMarketAPI:
                     "itemId": item_id,
                     "price": {
                         "amount": int(price * 100),  # Price in cents
-                        "currency": "USD"
-                    }
-                }
-            ]
+                        "currency": "USD",
+                    },
+                },
+            ],
         }
-        
+
         return await self._request(
             "POST",
             "/exchange/v1/offers/create",
-            data=data
+            data=data,
         )
 
     async def sell_item(
         self,
         item_id: str,
         price: float,
-        game: str = "csgo"
-    ) -> Dict[str, Any]:
-        """
-        Sell an item from user inventory.
-        
+        game: str = "csgo",
+    ) -> dict[str, Any]:
+        """Sell an item from user inventory.
+
         Args:
             item_id: Item ID from user's inventory
             price: Asking price
             game: Game name (csgo, dota2, tf2, rust etc)
-            
+
         Returns:
             Sale result as dict
+
         """
         data = {
             "items": [
@@ -472,166 +507,116 @@ class DMarketAPI:
                     "itemId": item_id,
                     "price": {
                         "amount": int(price * 100),  # Price in cents
-                        "currency": "USD"
-                    }
-                }
-            ]
+                        "currency": "USD",
+                    },
+                },
+            ],
         }
-        
+
         return await self._request(
             "POST",
             "/marketplace-api/v1/user-items/sell",
-            data=data
+            data=data,
         )
 
     async def get_user_inventory(
         self,
         game: str = "csgo",
         limit: int = 100,
-        offset: int = 0
-    ) -> Dict[str, Any]:
-        """
-        Get user inventory items.
-        
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Get user inventory items.
+
         Args:
             game: Game name (csgo, dota2, tf2, rust etc)
             limit: Number of items to retrieve
             offset: Offset for pagination
-            
+
         Returns:
             User inventory items as dict
+
         """
         params = {
             "gameId": game,
             "limit": limit,
             "offset": offset,
         }
-        
         return await self._request(
             "GET",
             "/marketplace-api/v1/user-inventory/list",
-            params=params
-        )    async def get_user_balance(self) -> Dict[str, Any]:
-        """
-        Get user account balance.
-        
+            params=params,
+        )
+
+    async def get_user_balance(self) -> dict[str, Any]:
+        """Get user account balance.
+
         Returns:
             User balance information in format {"usd": {"amount": value_in_cents}}
+
         """
         response = await self._request(
             "GET",
             "/account/v1/balance",
-            params={}
+            params={},
         )
-        
+
         # Проверяем и преобразуем ответ API к ожидаемому формату
         if response and isinstance(response, dict):
             # Проверяем наличие USD баланса в ответе API
             if "usd" in response:
                 # Если формат уже соответствует ожидаемому
                 return response
-            
+
             # Если баланс в другом формате, преобразуем его
             if "balance" in response and isinstance(response["balance"], dict):
                 usd_balance = response["balance"].get("usd", 0)
                 return {"usd": {"amount": usd_balance}}
-            
+
         # Возвращаем баланс по умолчанию, если нет данных или некорректный формат
-        logger.warning("Не удалось получить корректные данные о балансе, возвращаем нулевой баланс")
+        logger.warning(
+            "Не удалось получить корректные данные о балансе, возвращаем нулевой баланс"
+        )
         return {"usd": {"amount": 0}}
-        
+
     async def get_suggested_price(
         self,
         item_name: str,
-        game: str = "csgo"
-    ) -> Optional[float]:
-        """
-        Get suggested price for an item.
-        
+        game: str = "csgo",
+    ) -> float | None:
+        """Get suggested price for an item.
+
         Args:
             item_name: Item name
             game: Game name
-            
-        Returns:            Suggested price as float or None if not found
-        """
-        
-    async def get_user_balance(self) -> Dict[str, Any]:
-        """
-        Get user account balance.
-        
+
         Returns:
-            User balance information in format {"usd": {"amount": value_in_cents}}
+            Suggested price as float or None if not found
+
         """
-        response = await self._request(
-            "GET",
-            "/account/v1/balance",
-            params={}
-        )
-        
-        # Проверяем и преобразуем ответ API к ожидаемому формату
-        if response and isinstance(response, dict):
-            # Проверяем наличие USD баланса в ответе API
-            if "usd" in response:
-                # Если формат уже соответствует ожидаемому
-                return response
-            
-            # Если баланс в другом формате, преобразуем его
-            if "balance" in response and isinstance(response["balance"], dict):
-                usd_balance = response["balance"].get("usd", 0)
-                return {"usd": {"amount": usd_balance}}
-            
-        # Возвращаем баланс по умолчанию, если нет данных или некорректный формат
-        logger.warning("Не удалось получить корректные данные о балансе, возвращаем нулевой баланс")
-        return {"usd": {"amount": 0}}
         # Find the item
         response = await self.get_market_items(
             game=game,
             title=item_name,
-            limit=1
+            limit=1,
         )
-        
-        items = response.get('items', [])
+
+        items = response.get("items", [])
         if not items:
             return None
-            
+
         item = items[0]
         suggested_price = item.get("suggestedPrice")
-        
+
         if suggested_price:
             try:
-                return float(suggested_price) / 100  # Convert from cents to dollars
+                # Convert from cents to dollars
+                return float(suggested_price) / 100
             except (ValueError, TypeError):
                 try:
                     # Sometimes the API returns an object with amount and currency
-                    return float(suggested_price.get("amount", 0)) / 100
+                    amount = suggested_price.get("amount", 0)
+                    return float(amount) / 100
                 except (AttributeError, ValueError, TypeError):
                     return None
-        
-        return None    async def get_user_balance(self) -> Dict[str, Any]:
-        """
-        Get user account balance.
-        
-        Returns:
-            User balance information in format {"usd": {"amount": value_in_cents}}
-        """
-        response = await self._request(
-            "GET",
-            "/account/v1/balance",
-            params={}
-        )
-        
-        # Проверяем и преобразуем ответ API к ожидаемому формату
-        if response and isinstance(response, dict):
-            # Проверяем наличие USD баланса в ответе API
-            if "usd" in response:
-                # Если формат уже соответствует ожидаемому
-                return response
-            
-            # Если баланс в другом формате, преобразуем его
-            if "balance" in response and isinstance(response["balance"], dict):
-                usd_balance = response["balance"].get("usd", 0)
-                return {"usd": {"amount": usd_balance}}
-            
-        # Возвращаем баланс по умолчанию, если нет данных или некорректный формат
-        logger.warning("Не удалось получить корректные данные о балансе, возвращаем нулевой баланс")
-        return {"usd": {"amount": 0}}
+
+        return None

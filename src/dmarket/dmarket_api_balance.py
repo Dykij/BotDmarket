@@ -16,11 +16,21 @@ async def get_user_balance(self) -> Dict[str, Any]:
         Информация о балансе в формате {"usd": {"amount": value_in_cents}}
     """
     logger.debug("Запрос баланса пользователя DMarket")
-    response = await self._request(
-        "GET",
-        "/account/v1/balance",
-        params={}
-    )
+    # Сначала пробуем новый эндпоинт из документации
+    try:
+        response = await self._request(
+            "GET",
+            "/v1/user/balance",
+            params={}
+        )
+    except Exception as e:
+        logger.debug(f"Ошибка при запросе /v1/user/balance: {str(e)}")
+        # Если новый эндпоинт не работает, используем старый
+        response = await self._request(
+            "GET",
+            "/account/v1/balance",
+            params={}
+        )
     
     logger.debug(f"Ответ API баланса: {response}")
     
@@ -97,7 +107,6 @@ def apply_balance_patch():
     Применяет патч метода get_user_balance к классу DMarketAPI.
     """
     from src.dmarket.dmarket_api import DMarketAPI
-    
     # Добавляем метод в класс, если он еще не добавлен
     if not hasattr(DMarketAPI, "get_user_balance") or not callable(getattr(DMarketAPI, "get_user_balance", None)):
         logger.info("Применяем патч метода get_user_balance к классу DMarketAPI")

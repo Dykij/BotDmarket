@@ -11,9 +11,15 @@ from .dmarket_api import DMarketAPI
 
 # Применяем патч для DMarketAPI, добавляющий метод get_user_balance
 try:
-    from .dmarket_api_patch import apply_patch
-    # Применяем патч при импорте модуля
-    apply_patch()
+    # Попробуем загрузить и применить патч из dmarket_api_patch
+    try:
+        from .dmarket_api_patch import apply_patch
+        # Применяем патч при импорте модуля
+        apply_patch()
+    except ImportError:
+        # Если первый патч не найден, попробуем загрузить из dmarket_api_patches
+        from .dmarket_api_patches import apply_balance_patch
+        apply_balance_patch()
 except ImportError:
     import logging
     logging.getLogger(__name__).warning("Не удалось загрузить патч для DMarketAPI")

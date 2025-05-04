@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: dmarket_bot
+    restart: unless-stopped
+    volumes:
+      # Для сохранения логов и аналитики между перезапусками
+      - ./logs:/app/logs
+      - ./error_analytics.json:/app/error_analytics.json
+    environment:
+      # Задайте переменные окружения здесь или через .env файл
+      - DMARKET_PUBLIC_KEY=${DMARKET_PUBLIC_KEY}
+      - DMARKET_SECRET_KEY=${DMARKET_SECRET_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # Дополнительные настройки если нужно
+      - LOG_LEVEL=INFO
+      - ENABLE_AUTO_ARBITRAGE=false
+    networks:
+      - bot_network
+
+networks:
+  bot_network:
+    driver: bridge

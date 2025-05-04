@@ -1,13 +1,14 @@
-"""
-Демонстрационный модуль для автоматического арбитража на DMarket
+﻿"""
+Демонстрационный модуль для автоматического арбитража на DMarket.
+
+Модуль имитирует работу автоматического арбитража с помощью генерации случайных предметов и демонстрирует различные режимы отбора арбитражных возможностей.
+Содержит функции для генерации тестовых данных, фильтрации предметов по режимам, а также асинхронную демонстрацию работы.
 """
 
 import asyncio
 import logging
-import os
 import random
-import time
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,14 +27,14 @@ GAMES = {
 
 def generate_random_items(game: str, count: int = 10) -> List[Dict[str, Any]]:
     """
-    Генерирует случайные предметы для тестирования.
-    
+    Генерирует случайные предметы для тестирования арбитражных стратегий.
+
     Args:
-        game: Код игры
-        count: Количество предметов для генерации
-        
+        game (str): Код игры (например, 'csgo', 'dota2').
+        count (int, optional): Количество предметов для генерации. По умолчанию 10.
+
     Returns:
-        Список предметов
+        List[Dict[str, Any]]: Список сгенерированных предметов с параметрами для арбитража.
     """
     item_types = {
         "csgo": ["Нож", "AWP", "AK-47", "M4A4", "Desert Eagle", "Перчатки", "USP-S", "Glock-18"],
@@ -41,27 +42,20 @@ def generate_random_items(game: str, count: int = 10) -> List[Dict[str, Any]]:
         "rust": ["Оружие", "Одежда", "Инструменты", "Ресурсы", "Декор"],
         "tf2": ["Шляпа", "Оружие", "Необычный предмет", "Редкий предмет"]
     }
-    
     rarities = ["Обычный", "Необычный", "Редкий", "Мифический", "Легендарный", "Древний", "Бессмертный"]
-    colors = ["Красный", "Синий", "Зеленый", "Желтый", "Черный", "Белый", "Розовый"]
-    
+    colors = ["Красный", "Синий", "Зелёный", "Жёлтый", "Чёрный", "Белый", "Розовый"]
+
     items = []
     item_types_for_game = item_types.get(game, ["Предмет"])
-    
-    for i in range(count):
+
+    for _ in range(count):
         item_type = random.choice(item_types_for_game)
         rarity = random.choice(rarities)
         color = random.choice(colors)
-        
-        # Генерируем случайную цену и прибыль
         buy_price = random.randint(100, 10000)  # цена в центах
         profit_percentage = random.uniform(5.0, 30.0)  # процент прибыли
         profit = int(buy_price * profit_percentage / 100)
-        
-        # Создаем название предмета
         item_name = f"{rarity} {item_type} | {color}"
-        
-        # Создаем предмет
         item = {
             "title": item_name,
             "buyPrice": buy_price,
@@ -72,118 +66,103 @@ def generate_random_items(game: str, count: int = 10) -> List[Dict[str, Any]]:
             "rarity": rarity,
             "color": color
         }
-        
         items.append(item)
-    
-    # Сортируем по проценту прибыли
+
     items.sort(key=lambda x: x["profitPercent"], reverse=True)
     return items
 
 
 def arbitrage_boost(game: str) -> List[Dict[str, Any]]:
     """
-    Получает предметы для арбитража в режиме 'Разгон баланса' (низкая прибыль, но быстрые сделки).
-    
+    Возвращает предметы для арбитража в режиме 'Разгон баланса' (низкая прибыль, быстрые сделки).
+
     Args:
-        game: Код игры
-        
+        game (str): Код игры.
+
     Returns:
-        Список предметов
+        List[Dict[str, Any]]: Список предметов, подходящих для быстрого арбитража.
     """
     items = generate_random_items(game, count=15)
-    # Фильтруем по низкой цене и небольшой прибыли
+    # Фильтрация по низкой цене и минимальному проценту прибыли
     return [item for item in items if item["buyPrice"] < 500 and item["profitPercent"] >= 5.0]
 
 
 def arbitrage_mid(game: str) -> List[Dict[str, Any]]:
     """
-    Получает предметы для арбитража в режиме 'Средний трейдер' (средняя прибыль).
-    
+    Возвращает предметы для арбитража в режиме 'Средний трейдер' (средняя прибыль).
+
     Args:
-        game: Код игры
-        
+        game (str): Код игры.
+
     Returns:
-        Список предметов
+        List[Dict[str, Any]]: Список предметов для среднего арбитража.
     """
     items = generate_random_items(game, count=20)
-    # Фильтруем по средней цене и средней прибыли
+    # Фильтрация по средней цене и проценту прибыли
     return [item for item in items if 500 <= item["buyPrice"] < 2000 and item["profitPercent"] >= 10.0]
 
 
 def arbitrage_pro(game: str) -> List[Dict[str, Any]]:
     """
-    Получает предметы для арбитража в режиме 'Trade Pro' (высокая прибыль).
-    
+    Возвращает предметы для арбитража в режиме 'Trade Pro' (высокая прибыль).
+
     Args:
-        game: Код игры
-        
+        game (str): Код игры.
+
     Returns:
-        Список предметов
+        List[Dict[str, Any]]: Список предметов для арбитража с высокой прибылью.
     """
     items = generate_random_items(game, count=25)
-    # Фильтруем по высокой цене и высокой прибыли
+    # Фильтрация по высокой цене и проценту прибыли
     return [item for item in items if item["buyPrice"] >= 2000 and item["profitPercent"] >= 15.0]
 
 
 async def auto_arbitrage_demo(game: str = "csgo", mode: str = "medium", iterations: int = 5) -> None:
     """
-    Демонстрация работы автоматического арбитража.
-    
+    Демонстрирует работу автоматического арбитража для выбранной игры и режима.
+
     Args:
-        game: Код игры
-        mode: Режим арбитража ('low', 'medium', 'high')
-        iterations: Количество итераций
+        game (str, optional): Код игры. По умолчанию 'csgo'.
+        mode (str, optional): Режим арбитража ('low', 'medium', 'high'). По умолчанию 'medium'.
+        iterations (int, optional): Количество итераций демонстрации. По умолчанию 5.
     """
-    logger.info(f"Запуск автоматического арбитража для {GAMES.get(game, game)} в режиме {mode}")
-    
+    logger.info("Запуск автоматического арбитража для %s в режиме %s", GAMES.get(game, game), mode)
     try:
         for i in range(iterations):
-            logger.info(f"Итерация {i+1} из {iterations}")
-            
-            # Получаем данные в зависимости от режима
+            logger.info("Итерация %d из %d", i + 1, iterations)
             if mode == "low":
                 items = arbitrage_boost(game)
             elif mode == "high":
                 items = arbitrage_pro(game)
-            else:  # medium
+            else:
                 items = arbitrage_mid(game)
-            
             if items:
-                logger.info(f"Найдено {len(items)} предметов для арбитража")
-                
-                # Выводим топ-3 предмета
+                logger.info("Найдено %d предметов для арбитража", len(items))
                 for j, item in enumerate(items[:3], start=1):
                     name = item["title"]
-                    buy_price = item["buyPrice"] / 100  # переводим центы в доллары
+                    buy_price = item["buyPrice"] / 100
                     profit = item["profit"] / 100
                     profit_percent = item["profitPercent"]
-                    
-                    logger.info(f"{j}. {name} - ${buy_price:.2f} "
-                               f"(Прибыль: ${profit:.2f}, {profit_percent:.1f}%)")
-                
-                # В реальном приложении здесь могла бы быть логика для выполнения
-                # автоматических сделок, но это просто демонстрация
+                    logger.info(
+                        "%d. %s - $%.2f (Прибыль: $%.2f, %.1f%%)",
+                        j, name, buy_price, profit, profit_percent)
             else:
                 logger.info("Не найдено предметов, удовлетворяющих условиям")
-            
-            # Ждем некоторое время перед следующей итерацией
             await asyncio.sleep(2)
-    
     except Exception as e:
-        logger.error(f"Ошибка при выполнении автоматического арбитража: {str(e)}")
-    
-    logger.info("Автоматический арбитраж завершен")
+        logger.error("Ошибка при выполнении автоматического арбитража: %s", str(e))
+    logger.info("Автоматический арбитраж завершён")
 
 
 async def main() -> None:
-    """Запускает демонстрацию автоматического арбитража."""
+    """
+    Запускает демонстрацию автоматического арбитража для разных игр и режимов.
+    """
     print("""
     =============================================================
     Демонстрация автоматического арбитража для DMarket
     =============================================================
     """)
-    
-    # Запускаем демонстрацию для разных игр и режимов
     for game in ["csgo", "dota2"]:
         for mode in ["low", "medium", "high"]:
             print(f"\n----- Автоматический арбитраж: {GAMES[game]}, режим: {mode} -----")
@@ -192,5 +171,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # Запускаем асинхронную демонстрацию
+    # Точка входа: запуск асинхронной демонстрации автоматического арбитража
     asyncio.run(main())
+

@@ -228,6 +228,18 @@ async def check_user_balance(dmarket_api: DMarketAPI) -> Tuple[bool, float]:
         Кортеж (достаточно средств, текущий баланс)
     """
     try:
+        # Проверяем, что метод get_user_balance существует
+        if not hasattr(dmarket_api, "get_user_balance") or not callable(getattr(dmarket_api, "get_user_balance", None)):
+            # Импортируем и применяем патч если метод отсутствует
+            try:
+                from src.dmarket.dmarket_api_patches import apply_balance_patch
+                apply_balance_patch()
+                logger.info("Патч для баланса был успешно применен")
+            except Exception as e:
+                logger.error(f"Ошибка при импорте и применении патча баланса: {str(e)}")
+                return False, 0.0
+                
+        # Теперь запрашиваем баланс
         async with dmarket_api:
             balance_data = await dmarket_api.get_user_balance()
         

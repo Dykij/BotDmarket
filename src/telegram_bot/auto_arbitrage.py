@@ -275,15 +275,15 @@ async def start_auto_trading(
                 reply_markup=get_back_to_arbitrage_keyboard()
             )
             return
-        
-        # Создаем API-клиент для всех операций
+          # Создаем API-клиент для всех операций
+        import httpx
         api_client = DMarketAPI(
             public_key,
             secret_key,
             "https://api.dmarket.com",
             max_retries=3,
             connection_timeout=10.0,
-            pool_limits=10
+            pool_limits=httpx.Limits(max_connections=10)
         )
         
         # Проверяем баланс пользователя перед началом

@@ -15,7 +15,10 @@ ruff>=0.0.280
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
+pytest-xdist>=3.3.0  # Параллельное выполнение тестов
 black>=23.0.0
+coverage>=7.2.0
+codecov>=2.1.0       # Для загрузки отчетов о покрытии
 
 # Type stubs for better type checking
 types-pytest>=7.0.0
