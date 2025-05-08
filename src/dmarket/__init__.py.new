@@ -1,0 +1,82 @@
+"""Модуль инициализации пакета dmarket."""
+
+import logging
+from typing import List, Dict, Any
+
+from .api import DMarketAPI
+from .arbitrage import GAMES
+
+__all__ = ["DMarketAPI", "GAMES", "find_arbitrage_opportunities"]
+__version__ = "0.1.0"
+
+logger = logging.getLogger(__name__)
+logger.info("DMarketAPI с улучшенным балансом загружен успешно")
+
+
+def find_arbitrage_opportunities(min_profit_percentage: float = 10.0, max_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    Находит арбитражные возможности с минимальным процентом прибыли.
+    
+    Args:
+        min_profit_percentage: Минимальный процент прибыли
+        max_results: Максимальное количество результатов
+        
+    Returns:
+        Список найденных возможностей для арбитража
+    """
+    # В реальном проекте здесь будет код для сравнения цен на разных площадках
+    # Для демонстрации создаем тестовые данные
+    
+    # Пример возможностей арбитража
+    opportunities = [
+        {
+            "item_name": "AWP | Dragon Lore (Factory New)",
+            "buy_price": 2000.0,
+            "sell_price": 2520.0,
+            "profit": 520.0,
+            "profit_percentage": 26.0,
+        },
+        {
+            "item_name": "AK-47 | Fire Serpent (Minimal Wear)",
+            "buy_price": 900.0,
+            "sell_price": 1100.0,
+            "profit": 200.0,
+            "profit_percentage": 22.2,
+        },
+        {
+            "item_name": "M4A4 | Howl (Field-Tested)",
+            "buy_price": 1200.0,
+            "sell_price": 1320.0,
+            "profit": 120.0,
+            "profit_percentage": 10.0,
+        },
+        {
+            "item_name": "Butterfly Knife | Fade (Factory New)",
+            "buy_price": 800.0,
+            "sell_price": 920.0,
+            "profit": 120.0,
+            "profit_percentage": 15.0,
+        },
+        {
+            "item_name": "Skeleton Knife | Crimson Web (Minimal Wear)",
+            "buy_price": 1000.0,
+            "sell_price": 1150.0,
+            "profit": 150.0,
+            "profit_percentage": 15.0,
+        },
+    ]
+    
+    # Фильтрация по минимальному проценту прибыли
+    filtered_opportunities = [
+        item for item in opportunities 
+        if item["profit_percentage"] >= min_profit_percentage
+    ]
+    
+    # Сортировка по проценту прибыли
+    filtered_opportunities.sort(
+        key=lambda x: x["profit_percentage"],
+        reverse=True,
+    )
+    
+    # Ограничение количества результатов
+    return filtered_opportunities[:max_results]

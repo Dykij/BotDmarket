@@ -22,16 +22,14 @@ def test_get_arbitrage_keyboard():
     # Проверяем, что возвращается правильный тип
     assert isinstance(keyboard, InlineKeyboardMarkup)
     
-    # Проверяем количество строк в клавиатуре
-    assert len(keyboard.inline_keyboard) == 5
+    # Проверяем количество строк в клавиатуре (должно быть 2)
+    assert len(keyboard.inline_keyboard) == 2
     
-    # Проверяем первую строку клавиатуры (кнопки разгона и среднего трейдера)
+    # Проверяем первую строку клавиатуры (кнопка Авто-арбитраж)
     first_row = keyboard.inline_keyboard[0]
-    assert len(first_row) == 2
-    assert first_row[0].text == "🚀 Разгон баланса"
-    assert first_row[0].callback_data == "arbitrage_boost"
-    assert first_row[1].text == "💼 Средний трейдер"
-    assert first_row[1].callback_data == "arbitrage_mid"
+    assert len(first_row) == 1
+    assert first_row[0].text == "🤖 Авто-арбитраж"
+    assert first_row[0].callback_data == "auto_arbitrage"
     
     # Проверяем последнюю кнопку (возврат в меню)
     last_row = keyboard.inline_keyboard[-1]
@@ -99,11 +97,17 @@ def test_get_auto_arbitrage_keyboard():
     all_buttons = [button for row in keyboard.inline_keyboard for button in row]
     callback_data = [button.callback_data for button in all_buttons]
     
-    assert "auto_start:auto_low" in callback_data
-    assert "auto_start:auto_medium" in callback_data
-    assert "auto_start:auto_high" in callback_data
+    assert "auto_start:boost_low" in callback_data
+    assert "auto_start:mid_medium" in callback_data
+    assert "auto_start:pro_high" in callback_data
     assert "auto_stats" in callback_data
     assert "arbitrage" in callback_data
+    
+    # Проверяем тексты кнопок
+    button_texts = [button.text for button in all_buttons]
+    assert "🚀 Разгон баланса (низкий порог прибыли)" in button_texts
+    assert "💼 Средний трейдер (средняя прибыль)" in button_texts
+    assert "💰 Trade Pro (высокая прибыль)" in button_texts
 
 
 def test_get_back_to_arbitrage_keyboard():

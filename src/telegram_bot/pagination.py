@@ -1,7 +1,7 @@
 """Модуль для управления пагинацией результатов в Telegram-боте."""
 
 import logging
-from typing import List, Dict, Any, Tuple, Callable
+from typing import List, Dict, Any, Tuple, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,18 @@ class PaginationManager:
         # Сбрасываем кэш при обновлении данных
         if user_id in self.page_cache:
             del self.page_cache[user_id]
+
+    # Алиас для совместимости с вызовами add_items
+    def add_items(self, user_id: int, items: List[Any], mode: str = "default") -> None:
+        """
+        Алиас для add_items_for_user
+        
+        Args:
+            user_id: Идентификатор пользователя
+            items: Список элементов для пагинации
+            mode: Режим пагинации (для разных типов содержимого)
+        """
+        return self.add_items_for_user(user_id, items, mode)
 
     def get_items_per_page(self, user_id: int) -> int:
         """

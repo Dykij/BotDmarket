@@ -141,10 +141,10 @@ async def test_button_callback_arbitrage(mock_get_keyboard, mock_callback_query,
 
 
 @pytest.mark.asyncio
-@patch("src.telegram_bot.bot_v2.get_game_selection_keyboard")
-async def test_button_callback_select_game(mock_get_keyboard, mock_callback_query, mock_context):
-    """Тестирование обработки коллбэка для выбора игры."""
-    mock_callback_query.callback_query.data = "select_game"
+@patch("src.telegram_bot.bot_v2.get_auto_arbitrage_keyboard")
+async def test_button_callback_auto_arbitrage(mock_get_keyboard, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для кнопки автоматического арбитража."""
+    mock_callback_query.callback_query.data = "auto_arbitrage"
     mock_get_keyboard.return_value = MagicMock(spec=InlineKeyboardMarkup)
 
     await button_callback_handler(mock_callback_query, mock_context)
@@ -154,32 +154,69 @@ async def test_button_callback_select_game(mock_get_keyboard, mock_callback_quer
     mock_get_keyboard.assert_called_once()
 
     args, _ = mock_callback_query.callback_query.edit_message_text.call_args
-    assert "Выберите игру" in args[0]
+    assert "арбитража" in args[0]
 
 
 @pytest.mark.asyncio
 @patch("src.telegram_bot.bot_v2.start_auto_trading")
-async def test_button_callback_auto_start(mock_start_auto, mock_callback_query, mock_context):
-    """Тестирование обработки коллбэка для запуска автоматического арбитража."""
-    mock_callback_query.callback_query.data = "auto_start:auto_medium"
+async def test_button_callback_auto_start_boost(mock_start_auto, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для запуска режима разгона баланса."""
+    mock_callback_query.callback_query.data = "auto_start:boost_low"
 
     await button_callback_handler(mock_callback_query, mock_context)
 
     mock_start_auto.assert_called_once_with(
-        mock_callback_query.callback_query, mock_context, "auto_medium"
+        mock_callback_query.callback_query, mock_context, "boost_low"
     )
 
 
 @pytest.mark.asyncio
-@patch("src.telegram_bot.bot_v2.pagination_manager")
-@patch("src.telegram_bot.bot_v2.show_auto_stats")
-async def test_button_callback_paginate(mock_show_stats, mock_pagination_manager, mock_callback_query, mock_context):
-    """Тестирование обработки коллбэка для пагинации."""
-    mock_callback_query.callback_query.data = "paginate:next:auto_medium"
+@patch("src.telegram_bot.bot_v2.start_auto_trading")
+async def test_button_callback_auto_start_mid(mock_start_auto, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для запуска режима среднего трейдера."""
+    mock_callback_query.callback_query.data = "auto_start:mid_medium"
 
     await button_callback_handler(mock_callback_query, mock_context)
 
-    # Для auto режима должен быть вызван show_auto_stats
+    mock_start_auto.assert_called_once_with(
+        mock_callback_query.callback_query, mock_context, "mid_medium"
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.telegram_bot.bot_v2.start_auto_trading")
+async def test_button_callback_auto_start_pro(mock_start_auto, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для запуска режима профессионала."""
+    mock_callback_query.callback_query.data = "auto_start:pro_high"
+
+    await button_callback_handler(mock_callback_query, mock_context)
+
+    mock_start_auto.assert_called_once_with(
+        mock_callback_query.callback_query, mock_context, "pro_high"
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.telegram_bot.bot_v2.handle_pagination")
+async def test_button_callback_paginate(mock_handle_pagination, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для пагинации."""
+    mock_callback_query.callback_query.data = "paginate:next:boost_low"
+
+    await button_callback_handler(mock_callback_query, mock_context)
+
+    mock_handle_pagination.assert_called_once_with(
+        mock_callback_query.callback_query, mock_context, "next", "boost_low"
+    )
+
+
+@pytest.mark.asyncio
+@patch("src.telegram_bot.bot_v2.show_auto_stats_with_pagination")
+async def test_button_callback_auto_stats(mock_show_stats, mock_callback_query, mock_context):
+    """Тестирование обработки коллбэка для отображения статистики автоарбитража."""
+    mock_callback_query.callback_query.data = "auto_stats"
+
+    await button_callback_handler(mock_callback_query, mock_context)
+
     mock_show_stats.assert_called_once_with(
         mock_callback_query.callback_query, mock_context
     )

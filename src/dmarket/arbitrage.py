@@ -7,7 +7,7 @@ import asyncio
 import time
 from typing import List, Dict, Any, Optional, Tuple
 
-from .dmarket_api import DMarketAPI
+from .dmarket_api_fixed import DMarketAPI
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -1035,6 +1035,150 @@ class ArbitrageTrader:
             "pause_minutes": pause_minutes
         }
     
+    async def get_current_item_data(self, item_id: str, game: str = "csgo") -> Optional[Dict[str, Any]]:
+        """
+        Получает текущую информацию о предмете.
+        
+        Args:
+            item_id: Идентификатор предмета
+            game: Код игры
+            
+        Returns:
+            Словарь с информацией о предмете или None в случае ошибки
+        """
+        try:
+            # Запрос на получение информации о предмете через эндпоинт по документации
+            async with self.api:
+                result = await self.api._request(
+                    method="GET",
+                    path="/exchange/v1/market/items",
+                    params={
+                        "itemId": item_id,
+                        "gameId": game
+                    }
+                )
+            
+            if not result or "objects" not in result or not result["objects"]:
+                return None
+                
+            # Берем первый предмет из результатов
+            item_data = result["objects"][0]
+            
+            # Преобразуем цену из центов в доллары
+            price_data = item_data.get("price", {})
+            price = float(price_data.get("USD", 0)) / 100
+            
+            return {
+                "itemId": item_id,
+                "price": price,
+                "title": item_data.get("title", ""),
+                "game": game
+            }
+        except Exception as e:
+            logger.error(f"Ошибка при получении данных о предмете {item_id}: {e}")
+            return None
+    
+    async def purchase_item(self, item_id: str, max_price: float, dmarket_api: Optional[DMarketAPI] = None) -> Dict[str, Any]:
+        """
+        Покупает предмет на маркетплейсе.
+        
+        Args:
+            item_id: Идентификатор предмета для покупки
+            max_price: Максимальная цена покупки в USD
+            dmarket_api: Опциональный API-клиент (если None, используется внутренний)
+            
+        Returns:
+            Словарь с результатом операции
+        """
+        api = dmarket_api or self.api
+        
+        try:
+            # Покупаем предмет через API используя эндпоинт из документации
+            async with api:
+                purchase_data = await api._request(
+                    method="POST",
+                    path="/exchange/v1/offers/create",
+                    data={
+                        "targets": [
+                            {
+                                "itemId": item_id,
+                                "price": {
+                                    "amount": int(max_price * 100),
+                                    "currency": "USD"
+                                }
+                            }
+                        ]
+                    }
+                )
+            
+            if "error" in purchase_data:
+                return {
+                    "success": False,
+                    "error": purchase_data.get("error", {}).get("message", "Неизвестная ошибка при покупке")
+                }
+                
+            # Успешная покупка - получаем ID нового предмета в инвентаре
+            if "items" in purchase_data and purchase_data["items"]:
+                new_item_id = purchase_data["items"][0].get("itemId", "")
+                return {
+                    "success": True,
+                    "new_item_id": new_item_id,
+                    "price": max_price,
+                    "purchase_data": purchase_data
+                }
+            
+            return {
+                "success": False,
+                "error": "Не удалось получить ID купленного предмета"
+            }
+        except Exception as e:
+            logger.error(f"Ошибка при покупке предмета {item_id}: {e}")
+            return {"success": False, "error": str(e)}
+            
+    async def list_item_for_sale(self, item_id: str, price: float, dmarket_api: Optional[DMarketAPI] = None) -> Dict[str, Any]:
+        """
+        Выставляет предмет на продажу.
+        
+        Args:
+            item_id: Идентификатор предмета для продажи
+            price: Цена продажи в USD
+            dmarket_api: Опциональный API-клиент (если None, используется внутренний)
+            
+        Returns:
+            Словарь с результатом операции
+        """
+        api = dmarket_api or self.api
+        
+        try:
+            # Выставляем предмет на продажу через API используя эндпоинт из документации
+            async with api:
+                sell_data = await api._request(
+                    method="POST",
+                    path="/exchange/v1/user/items/sell",
+                    data={
+                        "itemId": item_id,
+                        "price": {
+                            "amount": int(price * 100),  # Конвертируем в центы
+                            "currency": "USD"
+                        }
+                    }
+                )
+            
+            if "error" in sell_data:
+                return {
+                    "success": False,
+                    "error": sell_data.get("error", {}).get("message", "Неизвестная ошибка при выставлении на продажу")
+                }
+                
+            return {
+                "success": True,
+                "price": price,
+                "sell_data": sell_data
+            }
+        except Exception as e:
+            logger.error(f"Ошибка при выставлении предмета {item_id} на продажу: {e}")
+            return {"success": False, "error": str(e)}
+
 
 async def find_arbitrage_items(
     game: str,
@@ -1075,5 +1219,21 @@ async def find_arbitrage_items(
         results = await arbitrage_mid_async(
             game, min_price, max_price, limit, api_client
         )
-        
-    return results
+    
+    # Проверяем и преобразуем результаты, если они в формате кортежа
+    processed_results = []
+    for item in results:
+        if isinstance(item, tuple):
+            # Преобразуем кортеж в словарь с нужными ключами
+            item_dict = {
+                "market_hash_name": item[0] if len(item) > 0 else "",
+                "buy_price": item[1] if len(item) > 1 else 0,
+                "sell_price": item[2] if len(item) > 2 else 0,
+                "profit": item[3] if len(item) > 3 else 0,
+                "profit_percent": item[4] if len(item) > 4 else 0
+            }
+            processed_results.append(item_dict)
+        else:
+            processed_results.append(item)
+            
+    return processed_results

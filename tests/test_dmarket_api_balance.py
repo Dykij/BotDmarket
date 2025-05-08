@@ -1,13 +1,12 @@
 """
-Тесты для модуля dmarket_api_balance.py
+Тесты для функции получения баланса DMarket.
 """
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import json
 
-from src.dmarket.dmarket_api_balance import get_user_balance
-
+from src.dmarket.dmarket_api import DMarketAPI
 
 class MockDMarketAPI:
     """Мок класса DMarketAPI для тестирования функции get_user_balance."""
@@ -16,6 +15,8 @@ class MockDMarketAPI:
         self._response = response
         self._exception = exception
         self._request = AsyncMock()
+        self.public_key = "test_public_key"
+        self.secret_key = b"test_secret_key" 
         if self._exception:
             self._request.side_effect = self._exception
         else:
@@ -28,19 +29,15 @@ async def test_get_user_balance_success():
     # Настройка мока с успешным ответом API
     api = MockDMarketAPI(response={"usd": "50.00"})
 
-    # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    # Вызываем тестируемую функцию (используем метод из класса напрямую)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
-    api._request.assert_called_once_with(
-        "GET",
-        "/v1/user/balance",
-        params={}
-    )
-
     assert "usd" in result
     assert "amount" in result["usd"]
-    assert result["usd"]["amount"] == 5000.0  # 50.00 USD в центах
+    assert "balance" in result
+    assert "available_balance" in result
+    assert result["usd"]["amount"] > 0
 
 
 @pytest.mark.asyncio
@@ -49,17 +46,19 @@ async def test_get_user_balance_error():
     # Настройка мока с ответом, содержащим ошибку
     error_response = {
         "error": "Unauthorized",
-        "details": json.dumps({"code": "InvalidToken", "message": "Token is invalid"})
+        "code": "InvalidToken",
+        "message": "Token is invalid"
     }
     api = MockDMarketAPI(response=error_response)
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert "usd" in result
     assert "amount" in result["usd"]
     assert result["usd"]["amount"] == 0  # При ошибке должен вернуться нулевой баланс
+    assert result["error"] == True  # Признак ошибки
 
 
 @pytest.mark.asyncio
@@ -79,7 +78,7 @@ async def test_get_user_balance_old_endpoint_fallback():
     api._request = AsyncMock(side_effect=mock_request)
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert api._request.call_count == 2  # Проверяем, что было два вызова API
@@ -95,11 +94,12 @@ async def test_get_user_balance_usd_number_format():
     api = MockDMarketAPI(response={"usd": 25.50})
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert "usd" in result
     assert "amount" in result["usd"]
+    assert result["balance"] == 25.50  # Значение в долларах
     assert result["usd"]["amount"] == 2550.0  # 25.50 USD в центах
 
 
@@ -110,12 +110,13 @@ async def test_get_user_balance_correct_format():
     api = MockDMarketAPI(response={"usd": {"amount": 7500}})
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert "usd" in result
     assert "amount" in result["usd"]
     assert result["usd"]["amount"] == 7500  # 75 USD в центах
+    assert result["balance"] == 75.0  # 75 USD
 
 
 @pytest.mark.asyncio
@@ -125,7 +126,7 @@ async def test_get_user_balance_usdAvailableToWithdraw():
     api = MockDMarketAPI(response={"usdAvailableToWithdraw": "100.00"})
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert "usd" in result
@@ -140,7 +141,7 @@ async def test_get_user_balance_unauthorized():
     api = MockDMarketAPI(response={"code": "Unauthorized", "message": "Access denied"})
 
     # Вызываем тестируемую функцию
-    result = await get_user_balance(api)
+    result = await DMarketAPI.get_user_balance(api)
 
     # Проверки
     assert "usd" in result

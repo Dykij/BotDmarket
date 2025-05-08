@@ -737,163 +737,210 @@ async def start_auto_trading(
 
 async def check_balance_command(message: Union[CallbackQuery, Update], context: CallbackContext) -> None:
     """
-    Проверяет баланс пользователя на DMarket.
+    Проверяет баланс DMarket и связь с API, а также показывает статистику аккаунта.
     
     Args:
-        message: Объект запроса (может быть CallbackQuery или Message)
+        message: Исходное сообщение или объект запроса обратного вызова
         context: Контекст обратного вызова
     """
-    # Определяем, какой тип объекта мы получили
-    is_callback = hasattr(message, 'callback_query') or hasattr(message, 'data')
+    # Определяем, является ли message объектом CallbackQuery или Update
+    is_callback = isinstance(message, CallbackQuery)
     
-    # Получаем объект сообщения и идентификатор чата
     if is_callback:
-        query = message if hasattr(message, 'data') else message.callback_query
-        chat_id = query.message.chat_id if hasattr(query, 'message') else query.from_user.id
-    else:
-        original_message = message.message
-        chat_id = original_message.chat_id
-        
-    # Получаем API ключи из контекста или окружения
-    public_key = context.user_data.get("api_key", "") if hasattr(context, "user_data") else ""
-    secret_key = context.user_data.get("api_secret", "") if hasattr(context, "user_data") else ""
-    
-    if not public_key or not secret_key:
-        try:
-            # Use properly typed environ_type
-            public_key = environ_type.get("DMARKET_PUBLIC_KEY", "")
-            secret_key = environ_type.get("DMARKET_SECRET_KEY", "")
-        except Exception as e:
-            logger.error(f"Ошибка при получении API ключей из окружения: {e}")
-    
-    if not public_key or not secret_key:
-        if is_callback:
-            await query.edit_message_text(
-                text="❌ <b>API ключи не настроены.</b> Пожалуйста, настройте ключи командой /setup.",
-                reply_markup=get_back_to_arbitrage_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await original_message.reply_text(
-                "❌ <b>API ключи не настроены.</b> Пожалуйста, настройте ключи командой /setup.",
-                parse_mode=ParseMode.HTML
-            )
-        return
-    
-    # Показываем сообщение о проверке баланса
-    if is_callback:
-        await query.edit_message_text(
-            text="⏳ <b>Проверка баланса на DMarket...</b>",
-            reply_markup=None,
+        # Для обратного вызова отправляем временное сообщение о проверке
+        await message.edit_message_text(
+            text="🔄 <b>Проверка подключения к DMarket API...</b>",
             parse_mode=ParseMode.HTML
         )
     else:
-        status_message = await original_message.reply_text(
-            "⏳ <b>Проверка баланса на DMarket...</b>",
+        # Для обычного сообщения отправляем временное сообщение о проверке
+        processing_message = await message.reply_text(
+            text="🔄 <b>Проверка подключения к DMarket API...</b>",
             parse_mode=ParseMode.HTML
         )
     
     try:
-        # Создаем клиент DMarketAPI
-        api_client = DMarketAPI(
-            public_key=public_key,
-            secret_key=secret_key,
-            # Use properly typed environ_type
-            api_url=environ_type.get("DMARKET_API_URL", "https://api.dmarket.com"),
-            max_retries=3
-        )
+        # Создаем API клиент с улучшенными настройками повторных попыток
+        api_client = await create_dmarket_api_client(context)
         
-        # Получаем информацию о балансе
-        balance_info = await check_user_balance(api_client)
-        
-        # Проверка, получены ли данные о балансе
-        if balance_info:
-            balance = balance_info.get("balance", 0)
-            has_funds = balance_info.get("has_funds", False)
-            
-            # Получаем дополнительную информацию, если доступна
-            holds = balance_info.get("holds", 0)
-            pending = balance_info.get("pending", 0)
-            
-            status = "✅" if has_funds else "⚠️"
-            
-            balance_text = (
-                f"{status} <b>Баланс на DMarket:</b> <b>${balance:.2f}</b>\n\n"
+        if not api_client:
+            error_text = (
+                "❌ <b>Ошибка подключения:</b>\n\n"
+                "Не удалось создать клиент DMarket API. "
+                "Проверьте, что ключи API настроены правильно."
             )
             
-            if holds > 0:
-                balance_text += f"🔒 На удержании: <b>${holds:.2f}</b>\n"
-                
-            if pending > 0:
-                balance_text += f"⏳ В ожидании: <b>${pending:.2f}</b>\n\n"
-            else:
-                balance_text += "\n"
-                
-            balance_text += f"Это <b>{'достаточно' if has_funds else 'недостаточно'}</b> средств для автоматической торговли."
-            
             if is_callback:
-                await query.edit_message_text(
-                    text=balance_text,
-                    reply_markup=get_back_to_arbitrage_keyboard(),
-                    parse_mode=ParseMode.HTML
-                )
-            else:
-                await status_message.edit_text(
-                    balance_text,
-                    parse_mode=ParseMode.HTML
-                )
-        else:
-            # В случае, если данные о балансе не получены
-            error_text = "❌ <b>Не удалось получить информацию о балансе.</b> Пожалуйста, проверьте API ключи."
-            
-            if is_callback:
-                await query.edit_message_text(
+                await message.edit_message_text(
                     text=error_text,
                     reply_markup=get_back_to_arbitrage_keyboard(),
                     parse_mode=ParseMode.HTML
                 )
             else:
-                await status_message.edit_text(
-                    error_text,
+                await processing_message.edit_text(
+                    text=error_text,
                     parse_mode=ParseMode.HTML
                 )
-    except APIError as e:
-        error_message = await handle_api_error(e)
-        error_text = f"❌ <b>Ошибка API при проверке баланса:</b>\n\n{error_message}"
+            return
         
+        # Обновляем статус
+        status_text = "🔄 <b>Проверка баланса DMarket...</b>"
         if is_callback:
-            await query.edit_message_text(
-                text=error_text,
-                reply_markup=get_back_to_arbitrage_keyboard(),
+            await message.edit_message_text(
+                text=status_text, 
                 parse_mode=ParseMode.HTML
             )
         else:
-            await status_message.edit_text(
-                error_text,
+            await processing_message.edit_text(
+                text=status_text, 
                 parse_mode=ParseMode.HTML
             )
+        
+        # Проверяем баланс через оптимизированную функцию прямого запроса
+        # Используем несколько попыток с разными эндпоинтами для надежности
+        try:
+            # Сначала пробуем через новый эндпоинт баланса
+            balance_result = await api_client.get_user_balance()
+            
+            # Проверяем, есть ли ошибка в ответе API
+            if balance_result.get("error", False):
+                error_msg = balance_result.get("error_message", "Неизвестная ошибка API")
+                error_code = balance_result.get("status_code", "неизвестный код")
+                
+                error_text = (
+                    f"❌ <b>Ошибка при получении баланса:</b>\n\n"
+                    f"Код: {error_code}\n"
+                    f"Сообщение: {error_msg}\n\n"
+                    f"Проверьте настройки API ключей и попробуйте снова."
+                )
+                
+                if is_callback:
+                    await message.edit_message_text(
+                        text=error_text,
+                        reply_markup=get_back_to_arbitrage_keyboard(),
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await processing_message.edit_text(
+                        text=error_text,
+                        parse_mode=ParseMode.HTML
+                    )
+                return
+            
+            # Извлекаем данные о балансе
+            available_balance = balance_result.get("available_balance", 0)
+            total_balance = balance_result.get("total_balance", 0)
+            has_funds = balance_result.get("has_funds", False)
+            
+            # Получаем дополнительную информацию об аккаунте
+            account_info = await api_client.get_account_details()
+            username = account_info.get("username", "Неизвестный")
+            
+            # Получаем статистику активных предложений
+            offers_info = await api_client.get_active_offers(limit=1)
+            total_offers = offers_info.get("total", 0)
+            
+            # Проверяем, достаточно ли средств для арбитража
+            min_required_balance = ARBITRAGE_MODES["boost_low"]["min_price"]
+            
+            if available_balance < min_required_balance:
+                warning_text = (
+                    f"⚠️ <b>Предупреждение:</b> Баланс меньше минимального "
+                    f"рекомендуемого значения (${min_required_balance:.2f}) для арбитража."
+                )
+            else:
+                warning_text = ""
+            
+            # Определяем статус баланса
+            if has_funds and available_balance >= 5.0:
+                balance_status = "✅ <b>Достаточно для арбитража</b>"
+            elif has_funds:
+                balance_status = "⚠️ <b>Низкий, но можно использовать</b>"
+            else:
+                balance_status = "❌ <b>Недостаточно для арбитража</b>"
+            
+            # Формируем итоговое сообщение
+            response_text = (
+                f"📊 <b>Информация о DMarket аккаунте</b>\n\n"
+                f"👤 <b>Пользователь:</b> {username}\n"
+                f"💰 <b>Доступный баланс:</b> ${available_balance:.2f}\n"
+                f"💵 <b>Общий баланс:</b> ${total_balance:.2f}\n"
+                f"📦 <b>Активные предложения:</b> {total_offers}\n"
+                f"🔋 <b>Статус баланса:</b> {balance_status}\n\n"
+            )
+            
+            if warning_text:
+                response_text += f"{warning_text}\n\n"
+            
+            current_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+            response_text += f"⏱️ <b>Обновлено:</b> {current_time}"
+            
+            # Добавляем подробную информацию для отладки только в лог
+            logger.info(
+                f"Баланс DMarket: ${available_balance:.2f} доступно, "
+                f"${total_balance:.2f} всего. "
+                f"Пользователь: {username}. "
+                f"Активных предложений: {total_offers}."
+            )
+            
+            # Отправляем результат
+            reply_markup = get_back_to_arbitrage_keyboard() if is_callback else None
+            
+            if is_callback:
+                await message.edit_message_text(
+                    text=response_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await processing_message.edit_text(
+                    text=response_text,
+                    parse_mode=ParseMode.HTML
+                )
+            
+        except APIError as e:
+            error_message = await handle_api_error(e)
+            error_text = (
+                f"❌ <b>Ошибка при проверке баланса:</b>\n\n{error_message}\n\n"
+                f"Возможно, проблема с подключением к DMarket API. "
+                f"Проверьте настройки API ключей и повторите попытку."
+            )
+            
+            if is_callback:
+                await message.edit_message_text(
+                    text=error_text,
+                    reply_markup=get_back_to_arbitrage_keyboard(),
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await processing_message.edit_text(
+                    text=error_text,
+                    parse_mode=ParseMode.HTML
+                )
+                
     except Exception as e:
-        logger.error(f"Ошибка при проверке баланса: {str(e)}")
-        error_text = f"❌ <b>Произошла ошибка при проверке баланса:</b>\n\n{str(e)}"
+        # Обрабатываем общую ошибку и показываем подробную информацию
+        logger.error(f"Ошибка при проверке баланса: {e}")
+        logger.error(traceback.format_exc())
+        
+        error_text = (
+            f"❌ <b>Ошибка при проверке баланса:</b>\n\n"
+            f"Тип ошибки: {type(e).__name__}\n"
+            f"Сообщение: {str(e)}\n\n"
+            f"Пожалуйста, попробуйте позже или обратитесь к администратору."
+        )
         
         if is_callback:
-            await query.edit_message_text(
+            await message.edit_message_text(
                 text=error_text,
                 reply_markup=get_back_to_arbitrage_keyboard(),
                 parse_mode=ParseMode.HTML
             )
         else:
-            await status_message.edit_text(
-                error_text,
+            await processing_message.edit_text(
+                text=error_text,
                 parse_mode=ParseMode.HTML
             )
-    finally:
-        # Закрываем клиент API
-        if 'api_client' in locals() and hasattr(api_client, '_close_client'):
-            try:
-                await api_client._close_client()
-            except Exception as e:
-                logger.warning(f"Ошибка при закрытии клиента API: {str(e)}")
 
 
 async def show_auto_stats(query: CallbackQuery, context: CallbackContext) -> None:

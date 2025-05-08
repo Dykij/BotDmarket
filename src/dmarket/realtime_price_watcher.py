@@ -2,15 +2,21 @@
 
 Этот модуль использует WebSocket соединение для получения обновлений
 о ценах предметов на маркетплейсе DMarket в режиме реального времени.
+
+Документация DMarket API: https://docs.dmarket.com/v1/swagger.html
 """
 
 import asyncio
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional
+import logging
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 
-from src.dmarket.dmarket_api import DMarketAPI
-from src.utils.logging_utils import get_logger
+from src.dmarket.dmarket_api_fixed import DMarketAPI
 from src.utils.websocket_client import DMarketWebSocketClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class PriceAlert:
@@ -40,6 +46,8 @@ class PriceAlert:
         self.condition = condition
         self.game = game
         self.is_triggered = False
+        self.created_at = time.time()
+        self.triggered_at = None
 
     def check_condition(self, current_price: float) -> bool:
         """Проверка условия срабатывания оповещения.
@@ -54,8 +62,15 @@ class PriceAlert:
         if (self.condition == "below" and current_price <= self.target_price) or (
             self.condition == "above" and current_price >= self.target_price
         ):
+            if not self.is_triggered:
+                self.triggered_at = time.time()
             return True
         return False
+        
+    def reset(self) -> None:
+        """Сбросить состояние оповещения для повторного использования."""
+        self.is_triggered = False
+        self.triggered_at = None
 
 
 class RealtimePriceWatcher:
@@ -70,13 +85,14 @@ class RealtimePriceWatcher:
         """
         self.api_client = api_client
         self.websocket_client = DMarketWebSocketClient(api_client)
-        self.logger = get_logger(
-            "realtime_price_watcher", {"component": "price_watcher"}
-        )
-
+        
         # Словарь для отслеживания цен {item_id: latest_price}
         self.price_cache = {}
-
+        
+        # Исторические данные о ценах {item_id: [(timestamp, price), ...]}
+        self.price_history = defaultdict(list)
+        self.max_history_points = 100  # Максимальное количество сохраняемых точек истории цен
+        
         # Словарь для хранения оповещений {item_id: [alert1, alert2, ...]}
         self.price_alerts = defaultdict(list)
 
@@ -88,10 +104,17 @@ class RealtimePriceWatcher:
 
         # Множество отслеживаемых предметов
         self.watched_items = set()
+        
+        # Словарь для хранения метаданных предметов
+        self.item_metadata = {}
 
         # Задачи
         self.ws_task = None
+        self.price_update_task = None
         self.is_running = False
+        
+        # Настройки
+        self.price_update_interval = 300  # Обновление цен каждые 5 минут для отслеживаемых предметов
 
     async def start(self) -> bool:
         """Запуск наблюдателя за ценами.
@@ -101,25 +124,32 @@ class RealtimePriceWatcher:
 
         """
         if self.is_running:
-            self.logger.warning("Наблюдатель за ценами уже запущен")
+            logger.warning("Наблюдатель за ценами уже запущен")
             return True
 
         # Регистрируем обработчик сообщений WebSocket
         self.websocket_client.register_handler(
             "market:update", self._handle_market_update
         )
+        self.websocket_client.register_handler(
+            "items:update", self._handle_items_update
+        )
 
         # Подключаемся к WebSocket
         connected = await self.websocket_client.connect()
         if not connected:
-            self.logger.error("Не удалось подключиться к WebSocket API DMarket")
+            logger.error("Не удалось подключиться к WebSocket API DMarket")
             return False
 
         # Запускаем задачу прослушивания
         self.ws_task = asyncio.create_task(self.websocket_client.listen())
+        
+        # Запускаем периодическое обновление цен через REST API
+        self.price_update_task = asyncio.create_task(self._periodic_price_updates())
+        
         self.is_running = True
 
-        self.logger.info("Наблюдатель за ценами успешно запущен")
+        logger.info("Наблюдатель за ценами успешно запущен")
         return True
 
     async def stop(self) -> None:
@@ -136,11 +166,19 @@ class RealtimePriceWatcher:
                 await self.ws_task
             except asyncio.CancelledError:
                 pass
+                
+        # Отменяем задачу обновления цен
+        if self.price_update_task and not self.price_update_task.done():
+            self.price_update_task.cancel()
+            try:
+                await self.price_update_task
+            except asyncio.CancelledError:
+                pass
 
         # Закрываем WebSocket соединение
         await self.websocket_client.close()
 
-        self.logger.info("Наблюдатель за ценами остановлен")
+        logger.info("Наблюдатель за ценами остановлен")
 
     async def _handle_market_update(self, message: Dict[str, Any]) -> None:
         """Обработка сообщения об обновлении рынка.
@@ -156,14 +194,19 @@ class RealtimePriceWatcher:
             if "items" in data:
                 for item in data["items"]:
                     item_id = item.get("itemId")
-                    price = item.get("price", {}).get("USD")
+                    price_data = item.get("price", {})
+                    
+                    if not item_id or not price_data:
+                        continue
 
-                    if not item_id or price is None:
+                    # Получаем цену в USD
+                    price = price_data.get("USD")
+                    if price is None:
                         continue
 
                     # Преобразуем цену в float
                     try:
-                        price_float = float(price)
+                        price_float = float(price) / 100  # Цена в центах, конвертируем в доллары
                     except (ValueError, TypeError):
                         continue
 
@@ -171,6 +214,9 @@ class RealtimePriceWatcher:
                     if item_id in self.watched_items:
                         old_price = self.price_cache.get(item_id)
                         self.price_cache[item_id] = price_float
+                        
+                        # Добавляем в историю цен
+                        self._add_to_price_history(item_id, price_float)
 
                         # Запускаем обработчики изменения цены
                         await self._process_price_change(
@@ -181,7 +227,165 @@ class RealtimePriceWatcher:
                         await self._check_alerts(item_id, price_float)
 
         except Exception as e:
-            self.logger.error(f"Ошибка при обработке сообщения обновления рынка: {e!s}")
+            logger.error(f"Ошибка при обработке сообщения обновления рынка: {e}")
+            
+    async def _handle_items_update(self, message: Dict[str, Any]) -> None:
+        """Обработка сообщения об обновлении конкретных предметов.
+
+        Args:
+            message: Сообщение от WebSocket API
+
+        """
+        try:
+            data = message.get("data", {})
+
+            # Обрабатываем обновления предметов
+            if "items" in data:
+                for item in data["items"]:
+                    item_id = item.get("itemId")
+                    price_data = item.get("price", {})
+                    
+                    if not item_id or not price_data:
+                        continue
+
+                    # Получаем цену в USD
+                    price = price_data.get("USD")
+                    if price is None:
+                        continue
+
+                    # Преобразуем цену в float
+                    try:
+                        price_float = float(price) / 100  # Цена в центах, конвертируем в доллары
+                    except (ValueError, TypeError):
+                        continue
+
+                    # Если этот предмет отслеживается
+                    if item_id in self.watched_items:
+                        old_price = self.price_cache.get(item_id)
+                        self.price_cache[item_id] = price_float
+                        
+                        # Добавляем в историю цен
+                        self._add_to_price_history(item_id, price_float)
+
+                        # Запускаем обработчики изменения цены
+                        await self._process_price_change(
+                            item_id, old_price, price_float
+                        )
+
+                        # Проверяем оповещения
+                        await self._check_alerts(item_id, price_float)
+                        
+                    # Сохраняем метаданные предмета
+                    if "title" in item:
+                        self.item_metadata[item_id] = {
+                            "title": item["title"],
+                            "gameId": item.get("gameId", ""),
+                            "lastUpdated": time.time()
+                        }
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке сообщения обновления предметов: {e}")
+            
+    def _add_to_price_history(self, item_id: str, price: float) -> None:
+        """Добавление записи в историю цен предмета.
+
+        Args:
+            item_id: ID предмета
+            price: Цена предмета
+
+        """
+        # Добавляем новую точку с текущим временем
+        self.price_history[item_id].append((time.time(), price))
+        
+        # Ограничиваем размер истории
+        if len(self.price_history[item_id]) > self.max_history_points:
+            self.price_history[item_id] = self.price_history[item_id][-self.max_history_points:]
+
+    async def _periodic_price_updates(self) -> None:
+        """Периодическое обновление цен через REST API."""
+        while self.is_running:
+            try:
+                await self._update_watched_items_prices()
+                await asyncio.sleep(self.price_update_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Ошибка при периодическом обновлении цен: {e}")
+                await asyncio.sleep(60)  # Уменьшаем частоту обновлений при ошибках
+                
+    async def _update_watched_items_prices(self) -> None:
+        """Обновление цен отслеживаемых предметов через REST API."""
+        if not self.watched_items:
+            return
+            
+        # Группируем предметы по играм для оптимизации запросов
+        items_by_game = defaultdict(list)
+        for item_id in self.watched_items:
+            # Определяем игру из метаданных или используем csgo по умолчанию
+            game = "csgo"
+            if item_id in self.item_metadata and "gameId" in self.item_metadata[item_id]:
+                game = self.item_metadata[item_id]["gameId"]
+            items_by_game[game].append(item_id)
+            
+        # Обновляем цены для каждой игры
+        for game, item_ids in items_by_game.items():
+            # Разбиваем на чанки по 50 предметов для избежания слишком длинных запросов
+            chunk_size = 50
+            for i in range(0, len(item_ids), chunk_size):
+                chunk = item_ids[i:i+chunk_size]
+                try:
+                    # Формируем строку с ID предметов через запятую
+                    item_ids_str = ",".join(chunk)
+                    
+                    # Запрашиваем информацию о предметах через API
+                    response = await self.api_client._request(
+                        "GET",
+                        f"/exchange/v1/market/items",
+                        params={
+                            "gameId": game,
+                            "itemIds": item_ids_str,
+                            "currency": "USD"
+                        }
+                    )
+                    
+                    if "items" in response:
+                        # Обрабатываем полученные данные
+                        for item in response["items"]:
+                            item_id = item.get("itemId")
+                            if not item_id:
+                                continue
+                                
+                            # Получаем цену
+                            price_data = item.get("price", {})
+                            if isinstance(price_data, dict) and "USD" in price_data:
+                                price = float(price_data["USD"]) / 100  # Цена в центах, конвертируем в доллары
+                                
+                                # Сохраняем метаданные
+                                self.item_metadata[item_id] = {
+                                    "title": item.get("title", ""),
+                                    "gameId": game,
+                                    "lastUpdated": time.time()
+                                }
+                                
+                                # Обрабатываем изменение цены
+                                old_price = self.price_cache.get(item_id)
+                                if old_price != price:
+                                    self.price_cache[item_id] = price
+                                    
+                                    # Добавляем в историю цен
+                                    self._add_to_price_history(item_id, price)
+                                    
+                                    # Запускаем обработчики изменения цены
+                                    await self._process_price_change(item_id, old_price, price)
+                                    
+                                    # Проверяем оповещения
+                                    await self._check_alerts(item_id, price)
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка при обновлении цен для игры {game}: {e}")
+                    
+                # Задержка между запросами чанков
+                await asyncio.sleep(1)
 
     async def _process_price_change(
         self,
@@ -211,7 +415,7 @@ class RealtimePriceWatcher:
             try:
                 await handler(item_id, old_price, new_price)
             except Exception as e:
-                self.logger.error(f"Ошибка в обработчике изменения цены: {e!s}")
+                logger.error(f"Ошибка в обработчике изменения цены: {e}")
 
     async def _check_alerts(self, item_id: str, current_price: float) -> None:
         """Проверка оповещений для предмета.
@@ -233,7 +437,89 @@ class RealtimePriceWatcher:
                     try:
                         await handler(alert, current_price)
                     except Exception as e:
-                        self.logger.error(f"Ошибка в обработчике оповещения: {e!s}")
+                        logger.error(f"Ошибка в обработчике оповещения: {e}")
+
+    async def subscribe_to_item(self, item_id: str, game: str = "csgo") -> bool:
+        """Подписаться на обновления конкретного предмета.
+
+        Args:
+            item_id: ID предмета для отслеживания
+            game: Игра, к которой относится предмет
+
+        Returns:
+            bool: True если подписка успешна, иначе False
+        """
+        if not self.is_running:
+            logger.error("Наблюдатель за ценами не запущен")
+            return False
+            
+        # Добавляем предмет для отслеживания
+        self.watch_item(item_id)
+        
+        # Получаем текущую цену предмета
+        current_price = await self._fetch_item_price(item_id, game)
+        if current_price:
+            self.price_cache[item_id] = current_price
+            self._add_to_price_history(item_id, current_price)
+            
+        # Подписываемся на обновления через WebSocket
+        return await self.websocket_client.subscribe_to_item_updates([item_id])
+
+    async def subscribe_to_market_updates(self, game: str = "csgo") -> bool:
+        """Подписаться на обновления рынка для конкретной игры.
+
+        Args:
+            game: Игра для подписки
+
+        Returns:
+            bool: True если подписка успешна, иначе False
+        """
+        if not self.is_running:
+            logger.error("Наблюдатель за ценами не запущен")
+            return False
+            
+        return await self.websocket_client.subscribe_to_market_updates(game)
+
+    async def _fetch_item_price(self, item_id: str, game: str = "csgo") -> Optional[float]:
+        """Получение текущей цены предмета.
+
+        Args:
+            item_id: ID предмета
+            game: Игра, к которой относится предмет
+
+        Returns:
+            Optional[float]: Текущая цена предмета или None в случае ошибки
+        """
+        try:
+            response = await self.api_client._request(
+                "GET",
+                f"/exchange/v1/market/items",
+                params={
+                    "gameId": game,
+                    "itemIds": item_id,
+                    "currency": "USD"
+                }
+            )
+            
+            if "items" in response and response["items"]:
+                item = response["items"][0]
+                price_data = item.get("price", {})
+                
+                if isinstance(price_data, dict) and "USD" in price_data:
+                    # Сохраняем метаданные предмета
+                    self.item_metadata[item_id] = {
+                        "title": item.get("title", ""),
+                        "gameId": game,
+                        "lastUpdated": time.time()
+                    }
+                    
+                    return float(price_data["USD"]) / 100  # Цена в центах, конвертируем в доллары
+                    
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении цены предмета {item_id}: {e}")
+            return None
 
     def watch_item(self, item_id: str, initial_price: Optional[float] = None) -> None:
         """Добавить предмет для отслеживания.
@@ -247,8 +533,9 @@ class RealtimePriceWatcher:
 
         if initial_price is not None:
             self.price_cache[item_id] = initial_price
+            self._add_to_price_history(item_id, initial_price)
 
-        self.logger.debug(f"Предмет {item_id} добавлен для отслеживания")
+        logger.debug(f"Предмет {item_id} добавлен для отслеживания")
 
     def unwatch_item(self, item_id: str) -> None:
         """Удалить предмет из отслеживания.
@@ -264,7 +551,7 @@ class RealtimePriceWatcher:
         if item_id in self.price_cache:
             del self.price_cache[item_id]
 
-        self.logger.debug(f"Предмет {item_id} удален из отслеживания")
+        logger.debug(f"Предмет {item_id} удален из отслеживания")
 
     def add_price_alert(self, alert: PriceAlert) -> None:
         """Добавить оповещение о цене.
@@ -278,7 +565,7 @@ class RealtimePriceWatcher:
         # Добавляем предмет для отслеживания
         self.watch_item(alert.item_id)
 
-        self.logger.info(
+        logger.info(
             f"Добавлено оповещение для {alert.market_hash_name} "
             f"({alert.condition} {alert.target_price})",
         )
@@ -298,7 +585,7 @@ class RealtimePriceWatcher:
             if not self.price_alerts[alert.item_id]:
                 del self.price_alerts[alert.item_id]
 
-        self.logger.debug(f"Удалено оповещение для {alert.market_hash_name}")
+        logger.debug(f"Удалено оповещение для {alert.market_hash_name}")
 
     def register_price_change_handler(
         self,
@@ -338,6 +625,24 @@ class RealtimePriceWatcher:
         """
         return self.price_cache.get(item_id)
 
+    def get_price_history(
+        self, item_id: str, limit: Optional[int] = None
+    ) -> List[Tuple[float, float]]:
+        """Получить историю цен предмета.
+
+        Args:
+            item_id: ID предмета
+            limit: Ограничение на количество точек истории
+
+        Returns:
+            List[Tuple[float, float]]: Список точек истории цен [(timestamp, price), ...]
+
+        """
+        history = self.price_history.get(item_id, [])
+        if limit:
+            return history[-limit:]
+        return history
+
     def get_all_alerts(self) -> Dict[str, List[PriceAlert]]:
         """Получить все активные оповещения.
 
@@ -346,6 +651,45 @@ class RealtimePriceWatcher:
 
         """
         return self.price_alerts
+        
+    def get_triggered_alerts(self) -> List[PriceAlert]:
+        """Получить все сработавшие оповещения.
+
+        Returns:
+            List[PriceAlert]: Список сработавших оповещений
+
+        """
+        triggered = []
+        for item_id, alerts in self.price_alerts.items():
+            for alert in alerts:
+                if alert.is_triggered:
+                    triggered.append(alert)
+        return triggered
+
+    def reset_triggered_alerts(self) -> int:
+        """Сбросить состояние всех сработавших оповещений.
+
+        Returns:
+            int: Количество сброшенных оповещений
+        """
+        reset_count = 0
+        for item_id, alerts in self.price_alerts.items():
+            for alert in alerts:
+                if alert.is_triggered:
+                    alert.reset()
+                    reset_count += 1
+        return reset_count
+
+    def get_item_metadata(self, item_id: str) -> Dict[str, Any]:
+        """Получить метаданные предмета.
+
+        Args:
+            item_id: ID предмета
+
+        Returns:
+            Dict[str, Any]: Метаданные предмета или пустой словарь
+        """
+        return self.item_metadata.get(item_id, {})
 
 
 # Пример использования:

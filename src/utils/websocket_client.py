@@ -1,316 +1,374 @@
-"""WebSocket клиент для DMarket API.
+"""
+WebSocket client module for DMarket API.
 
-Этот модуль предоставляет асинхронный клиент для работы с WebSocket API DMarket,
-позволяя получать обновления цен и других данных в реальном времени.
+Provides a client for real-time updates from DMarket WebSocket API.
+Based on DMarket API documentation at https://docs.dmarket.com/v1/swagger.html
 """
 
 import asyncio
 import json
+import logging
 import time
-from typing import Callable, List, Optional
-from unittest.mock import MagicMock
+from typing import Any, Callable, Dict, List, Optional
+import uuid
 
 import aiohttp
+from aiohttp import ClientSession
 
-from src.dmarket.dmarket_api import DMarketAPI
-from src.utils.logging_utils import get_logger
+from src.dmarket.dmarket_api_fixed import DMarketAPI
+
+logger = logging.getLogger(__name__)
 
 
 class DMarketWebSocketClient:
-    """Клиент для WebSocket соединения с DMarket API."""
+    """WebSocket client for DMarket API."""
 
-    def __init__(
-        self,
-        api_client: DMarketAPI,
-        subscription_topics: Optional[List[str]] = None,
-        reconnect_interval: int = 5,
-        max_reconnect_attempts: int = 10,
-        ping_interval: int = 30,
-    ):
-        """Инициализация WebSocket клиента.
+    # WebSocket endpoint
+    WS_ENDPOINT = "wss://ws.dmarket.com"
+
+    def __init__(self, api_client: DMarketAPI):
+        """Initialize WebSocket client.
 
         Args:
-            api_client: Экземпляр DMarketAPI для аутентификации
-            subscription_topics: Список тем для подписки
-            reconnect_interval: Интервал повторного подключения в секундах
-            max_reconnect_attempts: Максимальное количество попыток переподключения
-            ping_interval: Интервал отправки ping в секундах
-
+            api_client: DMarket API client for authentication
         """
         self.api_client = api_client
-        self.subscription_topics = subscription_topics or []
-        self.reconnect_interval = reconnect_interval
-        self.max_reconnect_attempts = max_reconnect_attempts
-        self.ping_interval = ping_interval
-
-        self.logger = get_logger("dmarket_websocket", {"component": "websocket"})
-        self.ws = None
+        self.session: Optional[ClientSession] = None
+        self.ws_connection = None
         self.is_connected = False
         self.reconnect_attempts = 0
-        self.last_activity = 0
-        self.ping_task = None
-        self.message_handlers = {}
+        self.max_reconnect_attempts = 10
+        
+        # Message handlers by event type
+        self.handlers = {}
+        
+        # Authenticated state
+        self.authenticated = False
+        
+        # Subscriptions
+        self.subscriptions = set()
+        
+        # Connection ID for tracking
+        self.connection_id = str(uuid.uuid4())
 
     async def connect(self) -> bool:
-        """Установка соединения с WebSocket API DMarket.
+        """Connect to DMarket WebSocket API.
 
         Returns:
-            bool: True если соединение успешно установлено, иначе False
-
+            bool: True if connection was successful
         """
+        if self.is_connected:
+            logger.info("WebSocket already connected")
+            return True
+            
+        logger.info(f"Connecting to DMarket WebSocket ({self.WS_ENDPOINT})...")
+        
         try:
-            # Получаем аутентификационный токен
-            session = aiohttp.ClientSession()
-            headers = self.api_client._generate_signature(
-                "GET",
-                "/exchange/v1/ws/token",
-                "",
+            # Create new session if needed
+            if self.session is None or self.session.closed:
+                self.session = aiohttp.ClientSession()
+                
+            # Connect to WebSocket
+            self.ws_connection = await self.session.ws_connect(
+                self.WS_ENDPOINT,
+                timeout=30.0,
+                heartbeat=30.0,
             )
-
-            try:
-                async with session.get(
-                    "https://api.dmarket.com/exchange/v1/ws/token",
-                    headers=headers,
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        self.logger.error(
-                            f"Ошибка получения токена WebSocket: {error_text}",
-                        )
-                        await session.close()
-                        return False
-
-                    token_data = await response.json()
-                    token = token_data.get("token")
-
-                    if not token:
-                        self.logger.error("Токен не получен в ответе")
-                        await session.close()
-                        return False
-            finally:
-                await session.close()
-
-            # Подключаемся к WebSocket с полученным токеном
-            session = aiohttp.ClientSession()
-            try:
-                self.ws = await session.ws_connect(
-                    f"wss://api.dmarket.com/exchange/v1/ws?token={token}",
-                    heartbeat=self.ping_interval,
-                )
-
-                self.is_connected = True
-                self.reconnect_attempts = 0
-                self.last_activity = time.time()
-
-                # Запускаем пинг для поддержания соединения
-                if self.ping_task is None or self.ping_task.done():
-                    self.ping_task = asyncio.create_task(self._ping_loop())
-
-                # Подписываемся на темы
-                for topic in self.subscription_topics:
-                    await self.subscribe(topic)
-
-                self.logger.info("WebSocket соединение установлено успешно")
-                return True
-            except Exception as e:
-                await session.close()
-                raise e
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при подключении к WebSocket: {e!s}")
+            
+            self.is_connected = True
+            self.reconnect_attempts = 0
+            logger.info("Connected to DMarket WebSocket API")
+            
+            # Authenticate if needed
+            if self.api_client.public_key and self.api_client.secret_key:
+                await self._authenticate()
+            
+            # Resubscribe to previously active subscriptions
+            await self._resubscribe()
+            
+            return True
+            
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logger.error(f"Failed to connect to DMarket WebSocket: {e}")
             self.is_connected = False
             return False
 
-    async def reconnect(self) -> bool:
-        """Повторное подключение к WebSocket.
-
-        Returns:
-            bool: True если переподключение успешно, иначе False
-
-        """
-        if self.reconnect_attempts >= self.max_reconnect_attempts:
-            self.logger.error(
-                "Превышено максимальное количество попыток переподключения",
-            )
-            return False
-
-        self.reconnect_attempts += 1
-        self.logger.info(
-            f"Попытка переподключения {self.reconnect_attempts}/{self.max_reconnect_attempts}",
-        )
-
-        if self.ws and not self.ws.closed:
-            await self.ws.close()
-
-        await asyncio.sleep(self.reconnect_interval)
-        return await self.connect()
-
-    async def _ping_loop(self) -> None:
-        """Асинхронный цикл для отправки ping-сообщений."""
-        try:
-            while self.is_connected:
-                if self.ws and not self.ws.closed:
-                    if time.time() - self.last_activity > self.ping_interval:
-                        await self.ws.ping()
-                        self.last_activity = time.time()
-
-                await asyncio.sleep(self.ping_interval)
-        except Exception as e:
-            self.logger.error(f"Ошибка в ping_loop: {e!s}")
-
-    async def subscribe(self, topic: str) -> bool:
-        """Подписка на тему WebSocket.
-
-        Args:
-            topic: Название темы для подписки
-
-        Returns:
-            bool: True если подписка успешна, иначе False
-
-        """
-        if not self.is_connected or not self.ws or self.ws.closed:
-            self.logger.error(
-                f"Невозможно подписаться на {topic}: соединение не установлено",
-            )
-            return False
-
-        try:
-            message = {
-                "method": "subscribe",
-                "params": {
-                    "channel": topic,
-                },
-            }
-
-            await self.ws.send_json(message)
-
-            if topic not in self.subscription_topics:
-                self.subscription_topics.append(topic)
-
-            self.logger.info(f"Подписка на {topic} отправлена")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при подписке на {topic}: {e!s}")
-            return False
-
-    async def unsubscribe(self, topic: str) -> bool:
-        """Отписка от темы WebSocket.
-
-        Args:
-            topic: Название темы для отписки
-
-        Returns:
-            bool: True если отписка успешна, иначе False
-
-        """
-        if not self.is_connected or not self.ws or self.ws.closed:
-            return False
-
-        try:
-            message = {
-                "method": "unsubscribe",
-                "params": {
-                    "channel": topic,
-                },
-            }
-
-            await self.ws.send_json(message)
-
-            if topic in self.subscription_topics:
-                self.subscription_topics.remove(topic)
-
-            self.logger.info(f"Отписка от {topic} отправлена")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при отписке от {topic}: {e!s}")
-            return False
-
-    def register_handler(self, topic: str, handler: Callable) -> None:
-        """Регистрация обработчика сообщений для темы.
-
-        Args:
-            topic: Название темы
-            handler: Функция-обработчик, принимающая данные сообщения
-
-        """
-        self.message_handlers[topic] = handler
-        self.logger.info(f"Зарегистрирован обработчик для темы {topic}")
+    async def close(self) -> None:
+        """Close WebSocket connection."""
+        if self.ws_connection:
+            logger.info("Closing WebSocket connection...")
+            
+            # Unsubscribe from everything before closing
+            await self._unsubscribe_all()
+            
+            await self.ws_connection.close()
+            self.ws_connection = None
+            self.is_connected = False
+            
+            logger.info("WebSocket connection closed")
+        
+        if self.session and not self.session.closed:
+            await self.session.close()
+            self.session = None
 
     async def listen(self) -> None:
-        """Прослушивание сообщений от WebSocket."""
-        while True:
+        """Listen for WebSocket messages in a loop.
+        
+        This method should be run in a separate task.
+        """
+        while self.is_connected:
             try:
-                if not self.is_connected:
-                    success = await self.reconnect()
-                    if not success:
-                        self.logger.error(
-                            "Не удалось переподключиться после нескольких попыток",
-                        )
-                        break
-
-                assert self.ws is not None
-
-                async for msg in self.ws:
-                    self.last_activity = time.time()
-
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        try:
-                            data = json.loads(msg.data)
-                            channel = data.get("channel")
-
-                            if channel and channel in self.message_handlers:
-                                handler = self.message_handlers[channel]
-                                await handler(data)
-                            else:
-                                self.logger.debug(
-                                    f"Получено сообщение без обработчика: {msg.data[:100]}...",
-                                )
-
-                        except json.JSONDecodeError:
-                            self.logger.error(
-                                f"Ошибка декодирования JSON: {msg.data[:100]}...",
-                            )
-
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        self.logger.error(
-                            f"Ошибка WebSocket соединения: {self.ws.exception()}",
-                        )
-                        self.is_connected = False
-                        break
-
-                    elif msg.type == aiohttp.WSMsgType.CLOSED:
-                        self.logger.info("WebSocket соединение закрыто")
-                        self.is_connected = False
-                        break
-
-            except asyncio.CancelledError:
-                self.logger.info("Задача прослушивания WebSocket была отменена")
-                break
-
-            except Exception as e:
-                self.logger.error(f"Ошибка при прослушивании WebSocket: {e!s}")
-                self.is_connected = False
-
-                success = await self.reconnect()
-                if not success:
-                    self.logger.error("Не удалось переподключиться после ошибки")
+                message = await self.ws_connection.receive()
+                
+                if message.type == aiohttp.WSMsgType.TEXT:
+                    await self._handle_message(message.data)
+                    
+                elif message.type == aiohttp.WSMsgType.CLOSED:
+                    logger.warning("WebSocket connection closed by server")
+                    self.is_connected = False
+                    await self._attempt_reconnect()
+                    
+                elif message.type == aiohttp.WSMsgType.ERROR:
+                    logger.error(f"WebSocket connection error: {message.data}")
+                    self.is_connected = False
+                    await self._attempt_reconnect()
+                    
+            except (aiohttp.ClientError, asyncio.CancelledError) as e:
+                if isinstance(e, asyncio.CancelledError):
+                    # Task was cancelled, just exit
+                    logger.info("WebSocket listen task cancelled")
                     break
+                    
+                logger.error(f"WebSocket error: {e}")
+                self.is_connected = False
+                await self._attempt_reconnect()
 
-    async def close(self) -> None:
-        """Закрытие WebSocket соединения."""
-        self.is_connected = False
+    async def _attempt_reconnect(self) -> None:
+        """Attempt to reconnect to WebSocket."""
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            logger.error(f"Failed to reconnect after {self.reconnect_attempts} attempts, giving up")
+            return
+            
+        self.reconnect_attempts += 1
+        delay = min(2 ** self.reconnect_attempts, 60)  # Exponential backoff with 60s max
+        
+        logger.info(f"Attempting to reconnect in {delay} seconds (attempt {self.reconnect_attempts})")
+        await asyncio.sleep(delay)
+        
+        success = await self.connect()
+        if not success:
+            logger.warning(f"Reconnect attempt {self.reconnect_attempts} failed")
 
-        if self.ping_task and not self.ping_task.done():
-            self.ping_task.cancel()
-            try:
-                # MagicMock не поддерживает await, поэтому проверяем тип
-                if not isinstance(self.ping_task, MagicMock):
-                    await self.ping_task
-            except asyncio.CancelledError:
-                pass
+    async def _handle_message(self, data: str) -> None:
+        """Handle incoming WebSocket message.
+        
+        Args:
+            data: Raw message data
+        """
+        try:
+            message = json.loads(data)
+            
+            # Handle authentication response
+            if "type" in message and message["type"] == "auth":
+                self._handle_auth_response(message)
+                return
+                
+            # Handle subscription response
+            if "type" in message and message["type"] == "subscription":
+                logger.debug(f"Subscription response: {message}")
+                return
+                
+            # Handle event message with handlers
+            if "type" in message and message["type"] in self.handlers:
+                event_type = message["type"]
+                handlers = self.handlers.get(event_type, [])
+                
+                # Execute all handlers for this event type
+                for handler in handlers:
+                    try:
+                        await handler(message)
+                    except Exception as e:
+                        logger.error(f"Error in event handler for {event_type}: {e}")
+                        
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse WebSocket message: {data}")
+        except Exception as e:
+            logger.error(f"Error handling WebSocket message: {e}")
 
-        if self.ws and not self.ws.closed:
-            await self.ws.close()
-            self.logger.info("WebSocket соединение закрыто")
+    def _handle_auth_response(self, message: Dict[str, Any]) -> None:
+        """Handle authentication response.
+        
+        Args:
+            message: Authentication response message
+        """
+        if message.get("status") == "success":
+            self.authenticated = True
+            logger.info("Successfully authenticated with DMarket WebSocket API")
+        else:
+            error = message.get("error", "Unknown error")
+            self.authenticated = False
+            logger.error(f"Authentication failed: {error}")
+
+    async def _authenticate(self) -> None:
+        """Authenticate with the WebSocket API using API keys."""
+        if not self.ws_connection or not self.is_connected:
+            logger.error("Cannot authenticate: WebSocket not connected")
+            return
+            
+        if not self.api_client.public_key or not self.api_client.secret_key:
+            logger.warning("Authentication skipped: No API keys provided")
+            return
+            
+        # Construct authentication message according to DMarket API docs
+        timestamp = str(int(time.time()))
+        auth_message = {
+            "type": "auth",
+            "apiKey": self.api_client.public_key,
+            "timestamp": timestamp
+        }
+        
+        # Send authentication message
+        await self.ws_connection.send_json(auth_message)
+        logger.debug("Sent authentication request")
+
+    async def _resubscribe(self) -> None:
+        """Resubscribe to previously active topics after reconnection."""
+        if not self.subscriptions:
+            return
+            
+        logger.info(f"Resubscribing to {len(self.subscriptions)} topics")
+        
+        for topic in self.subscriptions.copy():
+            await self.subscribe(topic)
+
+    async def _unsubscribe_all(self) -> None:
+        """Unsubscribe from all active subscriptions."""
+        if not self.subscriptions:
+            return
+            
+        logger.info(f"Unsubscribing from {len(self.subscriptions)} topics")
+        
+        for topic in self.subscriptions.copy():
+            await self.unsubscribe(topic)
+
+    async def subscribe(self, topic: str, params: Optional[Dict[str, Any]] = None) -> bool:
+        """Subscribe to a topic.
+        
+        Args:
+            topic: Topic to subscribe to
+            params: Additional parameters for subscription
+            
+        Returns:
+            bool: True if subscription was successful
+        """
+        if not self.ws_connection or not self.is_connected:
+            logger.error(f"Cannot subscribe to {topic}: WebSocket not connected")
+            return False
+            
+        # Build subscription message
+        subscription = {
+            "type": "subscribe",
+            "topic": topic,
+        }
+        
+        if params:
+            subscription["params"] = params
+            
+        # Send subscription request
+        await self.ws_connection.send_json(subscription)
+        logger.info(f"Subscribed to {topic}")
+        
+        # Add to active subscriptions
+        self.subscriptions.add(topic)
+        return True
+
+    async def unsubscribe(self, topic: str) -> bool:
+        """Unsubscribe from a topic.
+        
+        Args:
+            topic: Topic to unsubscribe from
+            
+        Returns:
+            bool: True if unsubscription was successful
+        """
+        if not self.ws_connection or not self.is_connected:
+            logger.error(f"Cannot unsubscribe from {topic}: WebSocket not connected")
+            return False
+            
+        # Build unsubscription message
+        unsubscription = {
+            "type": "unsubscribe",
+            "topic": topic,
+        }
+            
+        # Send unsubscription request
+        await self.ws_connection.send_json(unsubscription)
+        logger.info(f"Unsubscribed from {topic}")
+        
+        # Remove from active subscriptions
+        if topic in self.subscriptions:
+            self.subscriptions.remove(topic)
+            
+        return True
+
+    def register_handler(self, event_type: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Register a handler for an event type.
+        
+        Args:
+            event_type: Event type to handle
+            handler: Handler function
+        """
+        if event_type not in self.handlers:
+            self.handlers[event_type] = []
+            
+        self.handlers[event_type].append(handler)
+        logger.debug(f"Registered handler for event type {event_type}")
+
+    def unregister_handler(self, event_type: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Unregister a handler for an event type.
+        
+        Args:
+            event_type: Event type 
+            handler: Handler function
+        """
+        if event_type in self.handlers and handler in self.handlers[event_type]:
+            self.handlers[event_type].remove(handler)
+            logger.debug(f"Unregistered handler for event type {event_type}")
+
+    async def send_message(self, message: Dict[str, Any]) -> bool:
+        """Send a custom message to the WebSocket.
+        
+        Args:
+            message: Message to send
+            
+        Returns:
+            bool: True if message was sent successfully
+        """
+        if not self.ws_connection or not self.is_connected:
+            logger.error("Cannot send message: WebSocket not connected")
+            return False
+            
+        await self.ws_connection.send_json(message)
+        return True
+
+    async def subscribe_to_market_updates(self, game: str = "csgo") -> bool:
+        """Subscribe to market updates for a specific game.
+        
+        Args:
+            game: Game ID (e.g., "csgo", "dota2")
+            
+        Returns:
+            bool: True if subscription was successful
+        """
+        return await self.subscribe("market:update", {"gameId": game})
+
+    async def subscribe_to_item_updates(self, item_ids: List[str]) -> bool:
+        """Subscribe to updates for specific items.
+        
+        Args:
+            item_ids: List of item IDs to track
+            
+        Returns:
+            bool: True if subscription was successful
+        """
+        return await self.subscribe("items:update", {"itemIds": item_ids})

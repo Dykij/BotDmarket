@@ -1,3 +1,6 @@
+"""
+Константы для работы Telegram-бота.
+"""
 
 # Основные константы и настройки для Telegram-бота DMarket
 import os
@@ -24,3 +27,14 @@ ARBITRAGE_MODES = {
     "best": "Лучшие возможности",
     "auto": "Авто-арбитраж"
 }
+
+# Константы для хранения ценовых оповещений
+PRICE_ALERT_STORAGE_KEY = "price_alerts"
+PRICE_ALERT_HISTORY_KEY = "price_alert_history"
+
+# Константы для пагинации
+DEFAULT_PAGE_SIZE = 5
+MAX_ITEMS_PER_PAGE = 10
+
+# Константы для интерфейса
+MAX_MESSAGE_LENGTH = 4096

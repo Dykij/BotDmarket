@@ -1,5 +1,6 @@
 """
-Initialize the src package.
+BotDmarket package initialization.
+Contains DMarket API integration and Telegram bot functionality.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

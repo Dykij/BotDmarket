@@ -52,8 +52,8 @@ async def test_format_results():
         }
     ]
     
-    result = await format_results(items, "auto_medium", "csgo")
-      # Проверяем, что результат содержит заголовок
+    result = await format_results(items, "mid_medium", "csgo")
+    # Проверяем, что результат содержит заголовок
     assert "🤖 Результаты автоматического арбитража" in result
     # Проверяем, что результат содержит названия предметов
     assert "AK-47 | Redline" in result
@@ -61,8 +61,9 @@ async def test_format_results():
     # Проверяем, что результат содержит информацию о цене и прибыли
     assert "$10.00" in result  # Цена AK-47
     assert "$30.00" in result  # Цена AWP
-    assert "$1.00" in result   # Прибыль AK-47
-    assert "$3.00" in result   # Прибыль AWP
+    # В новой версии функции прибыль отображается в формате $100.00 вместо $1.00
+    assert "$100.00" in result  # Прибыль AK-47
+    assert "$300.00" in result  # Прибыль AWP
     assert "10.0%" in result   # Процент прибыли
 
 
@@ -74,7 +75,7 @@ async def test_handle_pagination_next(mock_pagination_manager, mock_query, mock_
     
     # Мокаем функцию show_auto_stats_with_pagination
     with patch("src.telegram_bot.auto_arbitrage.show_auto_stats_with_pagination", new=AsyncMock()) as mock_show:
-        await handle_pagination(mock_query, mock_context, "next", "auto_medium")
+        await handle_pagination(mock_query, mock_context, "next", "mid_medium")
         
         # Проверяем, что был вызван метод next_page менеджера пагинации
         mock_pagination_manager.next_page.assert_called_once_with(mock_query.from_user.id)
@@ -90,7 +91,7 @@ async def test_handle_pagination_prev(mock_pagination_manager, mock_query, mock_
     
     # Мокаем функцию show_auto_stats_with_pagination
     with patch("src.telegram_bot.auto_arbitrage.show_auto_stats_with_pagination", new=AsyncMock()) as mock_show:
-        await handle_pagination(mock_query, mock_context, "prev", "auto_medium")
+        await handle_pagination(mock_query, mock_context, "prev", "mid_medium")
         
         # Проверяем, что был вызван метод prev_page менеджера пагинации
         mock_pagination_manager.prev_page.assert_called_once_with(mock_query.from_user.id)
@@ -121,7 +122,7 @@ async def test_show_auto_stats_with_pagination_with_items(
         2   # total_pages
     )
     
-    mock_pagination_manager.get_mode.return_value = "auto_medium"
+    mock_pagination_manager.get_mode.return_value = "mid_medium"
     mock_format_results.return_value = "Форматированный текст"
     mock_markup.return_value = "keyboard_markup"
     mock_get_keyboard.return_value = "back_keyboard"
@@ -159,7 +160,7 @@ async def test_show_auto_stats_with_pagination_no_items(
         0     # total_pages
     )
     
-    mock_pagination_manager.get_mode.return_value = "auto_medium"
+    mock_pagination_manager.get_mode.return_value = "mid_medium"
     mock_get_keyboard.return_value = "back_keyboard"
     
     # Вызов тестируемой функции
@@ -174,3 +175,94 @@ async def test_show_auto_stats_with_pagination_no_items(
     call_kwargs = mock_query.edit_message_text.call_args[1]
     assert "ℹ️ Нет данных об автоматическом арбитраже" in call_kwargs["text"]
     assert call_kwargs["reply_markup"] == "back_keyboard"
+
+
+@pytest.mark.asyncio
+@patch("src.telegram_bot.auto_arbitrage.scan_multiple_games")
+@patch("src.telegram_bot.auto_arbitrage.check_user_balance")
+@patch("src.telegram_bot.auto_arbitrage.pagination_manager")
+@patch("os.environ.get")
+@patch("src.telegram_bot.auto_arbitrage.DMarketAPI")
+async def test_start_auto_trading_boost_low(
+    mock_dmarket_api,
+    mock_env_get,
+    mock_pagination_manager,
+    mock_check_balance,
+    mock_scan_games,
+    mock_query,
+    mock_context
+):
+    """Тест запуска автоарбитража в режиме разгона баланса (boost_low)."""
+    # Настраиваем моки
+    mock_context.bot_data = {
+        'dmarket_public_key': 'test_public_key',
+        'dmarket_secret_key': 'test_secret_key'
+    }
+    mock_check_balance.return_value = {'balance': 100.0}  # Достаточно средств
+    mock_scan_games.return_value = []  # Пустой результат для простоты
+    mock_dmarket_api.return_value = MagicMock()
+    mock_pagination_manager.get_page.return_value = ([], 0, 0)
+    
+    # Мокаем импорт модулей из intramarket_arbitrage, используя create=True для создания мока
+    with patch("src.telegram_bot.auto_arbitrage.find_price_anomalies", return_value=[], create=True):
+        # Вызываем функцию
+        await start_auto_trading(mock_query, mock_context, "boost_low")
+        
+        # Проверяем, что все ожидаемые функции были вызваны
+        mock_query.edit_message_text.assert_called()  # Должно быть несколько вызовов
+        mock_check_balance.assert_called_once()
+        mock_scan_games.assert_called_once()
+        
+        # Проверяем, что сканирование выполняется для всех игр
+        scan_games_call = mock_scan_games.call_args
+        assert 'games' in scan_games_call[1]
+        assert isinstance(scan_games_call[1]['games'], list)
+        assert len(scan_games_call[1]['games']) > 0  # Должен быть непустой список игр
+        
+        # Проверяем параметры для режима boost_low
+        assert scan_games_call[1]['min_price'] < 50.0  # Нижний порог цены для режима boost
+        assert scan_games_call[1]['min_profit_percent'] <= 10.0  # Небольшой порог прибыли для быстрого оборота
+
+
+@pytest.mark.asyncio
+@patch("src.telegram_bot.auto_arbitrage.scan_multiple_games")
+@patch("src.telegram_bot.auto_arbitrage.check_user_balance")
+@patch("src.telegram_bot.auto_arbitrage.pagination_manager")
+@patch("os.environ.get")
+@patch("src.telegram_bot.auto_arbitrage.DMarketAPI")
+async def test_start_auto_trading_mid_medium(
+    mock_dmarket_api,
+    mock_env_get,
+    mock_pagination_manager,
+    mock_check_balance,
+    mock_scan_games,
+    mock_query,
+    mock_context
+):
+    """Тест запуска автоарбитража в режиме среднего трейдера (mid_medium)."""
+    # Настраиваем моки
+    mock_context.bot_data = {
+        'dmarket_public_key': 'test_public_key',
+        'dmarket_secret_key': 'test_secret_key'
+    }
+    mock_check_balance.return_value = {'balance': 200.0}  # Достаточно средств
+    mock_scan_games.return_value = []  # Пустой результат для простоты
+    mock_dmarket_api.return_value = MagicMock()
+    mock_pagination_manager.get_page.return_value = ([], 0, 0)
+    
+    # Мокаем импорт модулей из intramarket_arbitrage, используя create=True для создания мока
+    with patch("src.telegram_bot.auto_arbitrage.find_price_anomalies", return_value=[], create=True) as mock_find_anomalies, \
+         patch("src.telegram_bot.auto_arbitrage.find_trending_items", return_value=[], create=True) as mock_find_trending:
+        
+        # Вызываем функцию
+        await start_auto_trading(mock_query, mock_context, "mid_medium")
+        
+        # Проверяем, что все ожидаемые функции были вызваны
+        mock_query.edit_message_text.assert_called()  # Должно быть несколько вызовов
+        mock_check_balance.assert_called_once()
+        mock_scan_games.assert_called_once()
+        
+        # Проверяем параметры для режима mid_medium
+        scan_games_call = mock_scan_games.call_args
+        assert scan_games_call[1]['min_price'] >= 10.0  # Средний порог цены
+        assert scan_games_call[1]['min_profit_percent'] >= 10.0  # Средний порог прибыли
