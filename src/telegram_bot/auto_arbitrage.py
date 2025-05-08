@@ -1,14 +1,33 @@
 """
 Модуль для автоматического арбитража.
+
+Предоставляет функциональность для автоматического поиска арбитражных возможностей
+и отображения результатов пользователю через Telegram.
 """
+# mypy: disable-error-code="attr-defined"
 
 import logging
 import traceback
 import asyncio
-from typing import List, Dict, Any, Tuple, Optional
+import os
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any, Tuple, Optional, Union, cast, TypedDict, MutableMapping
 
-from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+# Define os.environ type to fix linter errors
+class _Environ(TypedDict, total=False):
+    DMARKET_PUBLIC_KEY: str
+    DMARKET_SECRET_KEY: str
+    DMARKET_API_URL: str
+    # Add any other environment variables used in this module
+
+# Type hint for os module (suppress mypy errors)
+# This ensures os.environ is treated as a dictionary with string keys and values
+environ_type: MutableMapping[str, str] = os.environ  # type: ignore
+
+from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import CallbackContext
+from telegram.constants import ParseMode
 
 from src.telegram_bot.pagination import pagination_manager
 from src.dmarket.arbitrage import GAMES, ArbitrageTrader
@@ -17,11 +36,44 @@ from src.telegram_bot.auto_arbitrage_scanner import (
     auto_trade_items,
     check_user_balance
 )
-from src.telegram_bot.keyboards import get_back_to_arbitrage_keyboard
-from src.dmarket.dmarket_api import DMarketAPI
+from src.telegram_bot.keyboards import (
+    get_back_to_arbitrage_keyboard,
+    get_modern_arbitrage_keyboard,
+    get_auto_arbitrage_keyboard,
+)
+from src.dmarket.dmarket_api_fixed import DMarketAPI
+from src.utils.api_error_handling import APIError, handle_api_error, RetryStrategy
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
+
+# Настройки для разных режимов автоарбитража
+ARBITRAGE_MODES = {
+    "boost_low": {
+        "name": "разгон баланса (низкая прибыль, быстрый оборот)",
+        "min_price": 1.0,
+        "max_price": 50.0,
+        "min_profit_percent": 5.0,
+        "min_profit_amount": 0.5,
+        "trade_strategy": "fast_turnover"
+    },
+    "mid_medium": {
+        "name": "средний трейдер (средняя прибыль, сбалансированный риск)",
+        "min_price": 10.0,
+        "max_price": 200.0,
+        "min_profit_percent": 10.0,
+        "min_profit_amount": 2.0,
+        "trade_strategy": "balanced"
+    },
+    "pro_high": {
+        "name": "Trade Pro (высокая прибыль, высокий риск)",
+        "min_price": 50.0,
+        "max_price": 1000.0,
+        "min_profit_percent": 15.0,
+        "min_profit_amount": 5.0,
+        "trade_strategy": "high_profit"
+    }
+}
 
 
 async def format_results(
@@ -40,16 +92,18 @@ async def format_results(
     Returns:
         Отформатированный текст для отображения
     """
-    mode_display = {
-        "auto_low": "минимальная прибыль",
-        "auto_medium": "средняя прибыль",
-        "auto_high": "высокая прибыль",
-    }.get(mode, mode)
+    # Получаем отображаемое имя режима
+    mode_parts = mode.split('_')
+    mode_type = mode_parts[0] if len(mode_parts) > 0 else mode
+    mode_level = mode_parts[1] if len(mode_parts) > 1 else "medium"
+    
+    mode_key = f"{mode_type}_{mode_level}"
+    mode_display = ARBITRAGE_MODES.get(mode_key, {}).get("name", mode)
     
     if not items:
         return f"ℹ️ Нет данных об автоматическом арбитраже ({mode_display})"
     
-    header = f"🤖 Результаты автоматического арбитража ({mode_display}):\n\n"
+    header = f"🤖 <b>Результаты автоматического арбитража ({mode_display}):</b>\n\n"
     items_text = []
     for i, item in enumerate(items, start=1):
         name = item.get("title", "Неизвестный предмет")
@@ -59,16 +113,19 @@ async def format_results(
         if isinstance(price_value, dict):
             price = float(price_value.get("amount", 0)) / 100
         else:
-            price_str = str(item.get("price", "0"))
-            price_str = price_str.replace('$', '').strip()
-            price = float(price_str)
+            try:
+                price_str = str(item.get("price", "0"))
+                price_str = price_str.replace('$', '').strip()
+                price = float(price_str)
+            except (ValueError, TypeError):
+                price = float(price_value) / 100 if isinstance(price_value, (int, float)) else 0
         
         # Обрабатываем значение прибыли
         profit_value = item.get("profit", 0)
         if isinstance(profit_value, str) and '$' in profit_value:
             profit = float(profit_value.replace('$', '').strip())
         else:
-            profit = float(profit_value)
+            profit = float(profit_value) / 100 if isinstance(profit_value, (int, float)) else 0
             
         profit_percent = item.get("profit_percent", 0)
         
@@ -89,13 +146,14 @@ async def format_results(
             "low": "низкая"
         }.get(liquidity, "средняя")
         
+        # Используем HTML-форматирование
         item_text = (
-            f"{i}. {name}\n"
-            f"   🎮 Игра: {game_display}\n"
-            f"   💰 Цена: ${price:.2f}\n"
-            f"   💵 Прибыль: ${profit:.2f} ({profit_percent:.1f}%)\n"
-            f"   🔄 Ликвидность: {liquidity_display}\n"
-            f"   ⚠️ Риск: {risk_level}\n"
+            f"{i}. <b>{name}</b>\n"
+            f"   🎮 Игра: <b>{game_display}</b>\n"
+            f"   💰 Цена: <b>${price:.2f}</b>\n"
+            f"   💵 Прибыль: <b>${profit:.2f}</b> (<b>{profit_percent:.1f}%</b>)\n"
+            f"   🔄 Ликвидность: <b>{liquidity_display}</b>\n"
+            f"   ⚠️ Риск: <b>{risk_level}</b>\n"
         )
         items_text.append(item_text)
     
@@ -139,6 +197,11 @@ async def show_auto_stats_with_pagination(query: CallbackQuery, context: Callbac
             InlineKeyboardButton("⬅️ Назад", callback_data=f"paginate:prev:{mode}")
         )
     
+    if total_pages > 1:
+        pagination_row.append(
+            InlineKeyboardButton(f"{current_page + 1}/{total_pages}", callback_data="page_info")
+        )
+    
     if current_page < total_pages - 1:
         pagination_row.append(
             InlineKeyboardButton("➡️ Вперед", callback_data=f"paginate:next:{mode}")
@@ -152,16 +215,17 @@ async def show_auto_stats_with_pagination(query: CallbackQuery, context: Callbac
         InlineKeyboardButton("⬅️ Назад к арбитражу", callback_data="arbitrage")
     ])
     
-    # Добавляем статус страницы
-    page_status = f"📄 Страница {current_page + 1} из {total_pages}"
-    formatted_text += f"\n\n{page_status}"
+    # Добавляем статус страницы, если не добавлен через номер страницы
+    if total_pages <= 1:
+        page_status = f"📄 Страница {current_page + 1} из {total_pages}"
+        formatted_text += f"\n\n{page_status}"
     
     # Отображаем результаты
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         text=formatted_text,
         reply_markup=reply_markup,
-        parse_mode='HTML'
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -191,6 +255,61 @@ async def handle_pagination(
     await show_auto_stats_with_pagination(query, context)
 
 
+async def create_dmarket_api_client(context: CallbackContext) -> Optional[DMarketAPI]:
+    """
+    Создает и настраивает клиент DMarket API.
+    
+    Args:
+        context: Контекст обратного вызова
+        
+    Returns:
+        Настроенный клиент DMarketAPI или None в случае ошибки
+    """
+    # Загружаем ключи DMarket API из контекста бота или из переменных окружения
+    public_key = context.bot_data.get('dmarket_public_key', '')
+    secret_key = context.bot_data.get('dmarket_secret_key', '')
+    
+    if not public_key or not secret_key:
+        # Пробуем получить из переменных окружения
+        try:
+            # Use the properly typed environ_type
+            public_key = environ_type.get('DMARKET_PUBLIC_KEY', '')
+            secret_key = environ_type.get('DMARKET_SECRET_KEY', '')
+        except Exception as e:
+            logger.error(f"Ошибка при получении ключей API из окружения: {e}")
+            return None
+
+    if not public_key or not secret_key:
+        logger.error("API ключи не найдены ни в контексте, ни в переменных окружения")
+        return None
+    
+    try:
+        # Создаем API клиент с улучшенной стратегией повторных попыток
+        retry_strategy = RetryStrategy(
+            max_retries=3,
+            initial_delay=1.0,
+            max_delay=30.0,
+            backoff_factor=2.0,
+            status_codes_to_retry=[429, 500, 502, 503, 504]
+        )
+        
+        # Use the properly typed environ_type
+        api_url = environ_type.get('DMARKET_API_URL', 'https://api.dmarket.com')
+        
+        api_client = DMarketAPI(
+            public_key=public_key,
+            secret_key=secret_key,
+            api_url=api_url,
+            max_retries=3
+        )
+        
+        logger.info("API клиент DMarket успешно создан")
+        return api_client
+    except Exception as e:
+        logger.error(f"Ошибка при создании API клиента: {e}")
+        return None
+
+
 async def start_auto_trading(
     query: CallbackQuery,
     context: CallbackContext,
@@ -202,343 +321,579 @@ async def start_auto_trading(
     Args:
         query: Объект запроса обратного вызова
         context: Контекст обратного вызова
-        mode: Режим автоарбитража (auto_low, auto_medium, auto_high)
+        mode: Режим автоарбитража:
+            - boost_low: Режим разгона баланса с низким порогом прибыли
+            - mid_medium: Режим среднего трейдера со средней прибылью
+            - pro_high: Режим профессионала с высокой прибылью
     """
     user_id = query.from_user.id
-    
-    # Проверяем, есть ли указанная игра в контексте
-    selected_game = context.user_data.get(
-        "current_game", "csgo"
-    ) if hasattr(context, "user_data") else "csgo"
     
     # Отображаем сообщение о начале сканирования
     await query.edit_message_text(
         text=(
-            "🔍 Запускаем автоматическое сканирование нескольких игр...\n\n"
+            "🔍 <b>Запускаем комплексное сканирование нескольких игр...</b>\n\n"
             "📊 Это займет некоторое время. Идет поиск для CS2, Dota 2, "
             "Rust и TF2..."
         ),
-        reply_markup=None
+        parse_mode=ParseMode.HTML
     )
     
     try:
         # Определяем параметры поиска в зависимости от режима
-        search_mode = (
-            "low" if mode == "auto_low" 
-            else "medium" if mode == "auto_medium" 
-            else "high"
-        )
-        
-        # Определяем уровень риска для автоторговли
-        risk_level = (
-            "low" if mode == "auto_low"
-            else "medium" if mode == "auto_medium"
-            else "high"
-        )
-        
-        # Проверяем, нужно ли искать для всех игр или только для выбранной
-        if selected_game in GAMES:
-            # Пользователь указал конкретную игру
-            games_to_scan = [selected_game]
-            await query.edit_message_text(
-                text=(
-                    f"🔍 Ищем возможности автоматического арбитража для "
-                    f"{GAMES.get(selected_game, selected_game)}..."
-                ),
-                reply_markup=None
-            )
+        mode_parts = mode.split('_')
+        if len(mode_parts) < 2:
+            # Если формат неверный, используем значения по умолчанию
+            mode_type = "mid"
+            profit_level = "medium"
         else:
-            # Сканируем все поддерживаемые игры
-            games_to_scan = list(GAMES.keys())  # ["csgo", "dota2", "tf2", "rust"]
-        
-        # Максимальное количество предметов для каждой игры
-        max_items_per_game = 10
-        
-        # Получаем API ключи из пользовательских данных или окружения
-        import os
-        
-        public_key = context.user_data.get("api_key", "") if hasattr(context, "user_data") else ""
-        secret_key = context.user_data.get("api_secret", "") if hasattr(context, "user_data") else ""
-        
-        if not public_key or not secret_key:
-            public_key = os.environ.get("DMARKET_PUBLIC_KEY", "")
-            secret_key = os.environ.get("DMARKET_SECRET_KEY", "")
-        
-        if not public_key or not secret_key:
-            logger.error("Отсутствуют API ключи DMarket")
-            await query.edit_message_text(
-                text=(
-                    "❌ Ошибка: API ключи DMarket не настроены.\n\n"
-                    "Для использования автоматического арбитража необходимо "
-                    "указать API ключи DMarket с помощью команды /setup."
-                ),
-                reply_markup=get_back_to_arbitrage_keyboard()
-            )
-            return
-          # Создаем API-клиент для всех операций
-        import httpx
-        api_client = DMarketAPI(
-            public_key,
-            secret_key,
-            "https://api.dmarket.com",
-            max_retries=3,
-            connection_timeout=10.0,
-            pool_limits=httpx.Limits(max_connections=10)
-        )
-        
-        # Проверяем баланс пользователя перед началом
-        has_funds, balance = await check_user_balance(api_client)
-        
-        if not has_funds:
-            await query.edit_message_text(
-                text=(
-                    f"⚠️ Недостаточно средств для торговли.\n\n"
-                    f"Текущий баланс: ${balance:.2f}\n"
-                    f"Для торговли необходимо минимум $1.00"
-                ),
-                reply_markup=get_back_to_arbitrage_keyboard()
-            )
-            return
+            mode_type, profit_level = mode_parts
             
-        # Информируем пользователя о начале поиска
+        # Получаем настройки режима
+        mode_key = f"{mode_type}_{profit_level}"
+        mode_settings = ARBITRAGE_MODES.get(mode_key, ARBITRAGE_MODES["mid_medium"])
+        
+        min_price = mode_settings["min_price"]
+        max_price = mode_settings["max_price"]
+        min_profit_percent = mode_settings["min_profit_percent"]
+        min_profit_amount = mode_settings["min_profit_amount"]
+        trade_strategy = mode_settings["trade_strategy"]
+        display_mode = mode_settings["name"]
+        
+        # Всегда сканируем все игры
+        games_to_scan = list(GAMES.keys())  # ["csgo", "dota2", "rust", "tf2"]
+        
         await query.edit_message_text(
             text=(
-                f"💰 Текущий баланс: ${balance:.2f}\n\n"
-                f"🔍 Запускаем поиск арбитражных возможностей..."
+                f"🔍 <b>Ищем возможности для режима {display_mode}...</b>\n\n"
+                f"💼 Сканируем все игры (CS2, Dota 2, Rust, TF2)\n"
+                f"⏳ Это может занять некоторое время..."
             ),
-            reply_markup=None
+            parse_mode=ParseMode.HTML
         )
         
-        # Запускаем поиск для всех указанных игр
-        items_by_game = await scan_multiple_games(
-            games=games_to_scan,
-            mode=search_mode,
-            max_items_per_game=max_items_per_game
-        )
-        
-        # Информируем пользователя о найденных предметах
-        found_count = sum(len(items) for items in items_by_game.values())
-        
-        if found_count == 0:
+        # Создаем API клиент
+        api_client = await create_dmarket_api_client(context)
+        if not api_client:
             await query.edit_message_text(
-                text=(
-                    "ℹ️ Не найдено предметов для арбитража.\n\n"
-                    "Попробуйте изменить параметры поиска или выбрать другую игру."
-                ),
-                reply_markup=get_back_to_arbitrage_keyboard()
+                text="⚠️ <b>Не удалось создать API-клиент DMarket.</b>\n\nПроверьте настройки API ключей.",
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
             )
             return
+        
+        # Проверяем баланс пользователя перед началом сканирования
+        try:
+            balance_info = await check_user_balance(api_client)
+            available_balance = balance_info.get('balance', 0)
             
-        await query.edit_message_text(
-            text=(
-                f"✅ Найдено {found_count} предметов для арбитража.\n"
-                f"⏳ Обрабатываем и готовим к автоматической торговле..."
-            ),
-            reply_markup=None
-        )
-        
-        # Объединяем все найденные предметы для отображения, сохраняя информацию о играх
-        all_items = []
-        for game, items in items_by_game.items():
-            for item in items:
-                # Добавляем игру к каждому предмету, если ещё не добавлена
-                if "game" not in item:
-                    item["game"] = game
-                all_items.append(item)
-        
-        # Определяем параметры автоторговли в зависимости от режима
-        min_profit = 0.5  # USD (низкая прибыль)
-        max_price = 50.0  # USD (макс. цена покупки)
-        max_trades = 2    # Макс. количество сделок (безопасный режим)
-        
-        if mode == "auto_medium":
-            min_profit = 2.0  # USD (средняя прибыль)
-            max_price = 100.0
-            max_trades = 5
-        elif mode == "auto_high":
-            min_profit = 5.0  # USD (высокая прибыль)
-            max_price = 200.0
-            max_trades = 10
-            
-        # Проверяем, есть ли в контексте ограничения пользователя
-        if hasattr(context, "user_data") and "trade_settings" in context.user_data:
-            settings = context.user_data["trade_settings"]
-            min_profit = settings.get("min_profit", min_profit)
-            max_price = settings.get("max_price", max_price)
-            max_trades = settings.get("max_trades", max_trades)
-        
-        # Выполняем автоматическую торговлю, если есть найденные предметы
-        purchases = 0
-        sales = 0
-        total_profit = 0.0
-        
-        if all_items:
-            # Выполняем автоматическую торговлю только если пользователь явно это запросил
-            # В учебной версии не выполняем реальную торговлю, только показываем возможности
-            if context.user_data.get("auto_trading_enabled", False) if hasattr(context, "user_data") else False:
-                purchases, sales, total_profit = await auto_trade_items(
-                    items_by_game,
-                    min_profit=min_profit,
-                    max_price=max_price,
-                    dmarket_api=api_client,
-                    max_trades=max_trades,
-                    risk_level=risk_level
-                )
-            else:
-                # Если автоторговля не включена, показываем только анализ возможностей
+            if available_balance < min_price:
                 await query.edit_message_text(
                     text=(
-                        f"✅ Найдено {found_count} предметов для арбитража.\n\n"
-                        f"📈 Автоторговля не включена. Показываем только анализ возможностей.\n"
-                        f"Для включения автоторговли используйте /setup и включите опцию автоторговли."
+                        f"⚠️ <b>Недостаточно средств на балансе DMarket.</b>\n"
+                        f"Доступно: <b>${available_balance:.2f}</b>\n"
+                        f"Необходимо минимум: <b>${min_price:.2f}</b>"
                     ),
-                    reply_markup=None
+                    reply_markup=get_back_to_arbitrage_keyboard(),
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        except APIError as e:
+            error_message = await handle_api_error(e)
+            await query.edit_message_text(
+                text=f"❌ <b>Ошибка при проверке баланса:</b>\n\n{error_message}",
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception as e:
+            await query.edit_message_text(
+                text=f"❌ <b>Неизвестная ошибка при проверке баланса:</b>\n\n{str(e)}",
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Интегрируем внутренний арбитраж DMarket
+        try:
+            from src.dmarket.intramarket_arbitrage import (
+                find_price_anomalies,
+                find_trending_items,
+                find_mispriced_rare_items,
+                scan_for_intramarket_opportunities
+            )
+        except ImportError:
+            logger.warning("Модуль intramarket_arbitrage не найден, будет использоваться только межплатформенный арбитраж")
+        
+        # Создаем задачи для параллельного выполнения
+        tasks = []
+        
+        # Добавляем задачу для сканирования между площадками
+        tasks.append(
+            scan_multiple_games(
+                games=games_to_scan,
+                mode=profit_level,
+                max_items_per_game=20,
+                price_from=min_price,
+                price_to=max_price
+            )
+        )
+        
+        # Добавляем задачи для внутреннего арбитража DMarket в зависимости от стратегии
+        if 'find_price_anomalies' in locals():
+            if mode_type == "boost":
+                # Для режима разгона ищем ценовые аномалии
+                tasks.append(
+                    find_price_anomalies(
+                        game="csgo",
+                        similarity_threshold=0.9,
+                        price_diff_percent=min_profit_percent,
+                        max_results=30,
+                        min_price=min_price,
+                        max_price=max_price,
+                        dmarket_api=api_client
+                    )
+                )
+                
+                for game in games_to_scan[1:]:  # Остальные игры кроме csgo
+                    tasks.append(
+                        find_price_anomalies(
+                            game=game,
+                            similarity_threshold=0.9,
+                            price_diff_percent=min_profit_percent,
+                            max_results=10,
+                            min_price=min_price,
+                            max_price=max_price,
+                            dmarket_api=api_client
+                        )
+                    )
+            
+            elif mode_type == "mid":
+                # Для среднего режима ищем как аномалии, так и трендовые предметы
+                for game in games_to_scan:
+                    tasks.append(
+                        find_price_anomalies(
+                            game=game,
+                            similarity_threshold=0.85,
+                            price_diff_percent=min_profit_percent,
+                            max_results=10,
+                            min_price=min_price,
+                            max_price=max_price,
+                            dmarket_api=api_client
+                        )
+                    )
+                    
+                    if 'find_trending_items' in locals():
+                        tasks.append(
+                            find_trending_items(
+                                game=game,
+                                min_price=min_price,
+                                max_price=max_price,
+                                max_results=10,
+                                dmarket_api=api_client
+                            )
+                        )
+            
+            elif mode_type == "pro" and 'scan_for_intramarket_opportunities' in locals():
+                # Для профессионального режима ищем все типы возможностей
+                tasks.append(
+                    scan_for_intramarket_opportunities(
+                        games=games_to_scan,
+                        max_results_per_game=10,
+                        min_price=min_price,
+                        max_price=max_price,
+                        include_anomalies=True,
+                        include_trending=True,
+                        include_rare=True,
+                        dmarket_api=api_client
+                    )
                 )
         
-        # Добавляем найденные предметы в менеджер пагинации с информацией о результатах
-        pagination_manager.add_items_for_user(user_id, all_items, mode)
-        
-        # Обновляем статус для пользователя
-        await query.edit_message_text(
+        # Показываем прогресс
+        progress_msg = await query.edit_message_text(
             text=(
-                f"✅ {'Автоматический арбитраж завершен!' if context.user_data.get('auto_trading_enabled', False) else 'Анализ возможностей арбитража завершен!'}\n\n"
-                f"📈 Результаты:\n"
-                f"- Найдено предметов: {found_count}\n"
-                f"- Купленные предметы: {purchases}\n"
-                f"- Проданные предметы: {sales}\n"
-                f"- Общая прибыль: ${total_profit:.2f}\n\n"
-                f"⏳ Загружаем подробные результаты..."
+                f"🔍 <b>Сканирование активно ({len(tasks)} задач)...</b>\n\n"
+                f"⏳ Прогресс: 0% - Ожидайте результаты..."
             ),
-            reply_markup=None
+            parse_mode=ParseMode.HTML
         )
+        
+        # Выполняем все задачи параллельно
+        start_time = datetime.now()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        end_time = datetime.now()
+        execution_time = (end_time - start_time).total_seconds()
+        
+        # Обрабатываем результаты
+        all_items = []
+        
+        # Результаты межплатформенного арбитража
+        platform_arbitrage_results = results[0]
+        if isinstance(platform_arbitrage_results, list):
+            all_items.extend(platform_arbitrage_results)
+        
+        # Результаты внутреннего арбитража
+        for result in results[1:]:
+            if isinstance(result, Exception):
+                logger.error(f"Ошибка при сканировании: {result}")
+                continue
+                
+            if isinstance(result, dict):
+                # Результат scan_for_intramarket_opportunities
+                for game, game_results in result.items():
+                    for category, items in game_results.items():
+                        # Преобразуем формат для совместимости
+                        for item in items:
+                            if category == "price_anomalies":
+                                # Ценовые аномалии
+                                all_items.append({
+                                    "title": item.get("item_to_buy", {}).get("title", "Неизвестный предмет"),
+                                    "price": item.get("buy_price", 0) * 100,  # Конвертируем в центы
+                                    "profit": item.get("profit_after_fee", 0) * 100,  # Конвертируем в центы
+                                    "profit_percent": item.get("profit_percentage", 0),
+                                    "game": item.get("game", "csgo"),
+                                    "source": "dmarket_internal",
+                                    "strategy": "price_anomaly",
+                                    "item_id": item.get("item_to_buy", {}).get("itemId", ""),
+                                    "liquidity": "high"
+                                })
+                            elif category == "trending_items":
+                                # Трендовые предметы
+                                all_items.append({
+                                    "title": item.get("item", {}).get("title", "Неизвестный предмет"),
+                                    "price": item.get("current_price", 0) * 100,  # Конвертируем в центы
+                                    "profit": (item.get("projected_price", 0) - item.get("current_price", 0)) * 100,
+                                    "profit_percent": item.get("potential_profit_percent", 0),
+                                    "game": item.get("game", "csgo"),
+                                    "source": "dmarket_internal",
+                                    "strategy": "trending",
+                                    "item_id": item.get("item", {}).get("itemId", ""),
+                                    "liquidity": "medium"
+                                })
+                            elif category == "rare_mispriced":
+                                # Редкие неправильно оцененные предметы
+                                all_items.append({
+                                    "title": item.get("item", {}).get("title", "Неизвестный предмет"),
+                                    "price": item.get("current_price", 0) * 100,  # Конвертируем в центы
+                                    "profit": (item.get("estimated_value", 0) - item.get("current_price", 0)) * 100,
+                                    "profit_percent": item.get("price_difference_percent", 0),
+                                    "game": item.get("game", "csgo"),
+                                    "source": "dmarket_internal",
+                                    "strategy": "rare_item",
+                                    "item_id": item.get("item", {}).get("itemId", ""),
+                                    "liquidity": "low",
+                                    "rare_traits": item.get("rare_traits", [])
+                                })
+            elif isinstance(result, list):
+                # Результаты find_price_anomalies или find_trending_items
+                for item in result:
+                    if "item_to_buy" in item:
+                        # Ценовые аномалии
+                        all_items.append({
+                            "title": item.get("item_to_buy", {}).get("title", "Неизвестный предмет"),
+                            "price": item.get("buy_price", 0) * 100,  # Конвертируем в центы
+                            "profit": item.get("profit_after_fee", 0) * 100,  # Конвертируем в центы
+                            "profit_percent": item.get("profit_percentage", 0),
+                            "game": item.get("game", "csgo"),
+                            "source": "dmarket_internal",
+                            "strategy": "price_anomaly",
+                            "item_id": item.get("item_to_buy", {}).get("itemId", ""),
+                            "liquidity": "high"
+                        })
+                    elif "item" in item and "projected_price" in item:
+                        # Трендовые предметы
+                        all_items.append({
+                            "title": item.get("item", {}).get("title", "Неизвестный предмет"),
+                            "price": item.get("current_price", 0) * 100,  # Конвертируем в центы
+                            "profit": (item.get("projected_price", 0) - item.get("current_price", 0)) * 100,
+                            "profit_percent": item.get("potential_profit_percent", 0),
+                            "game": item.get("game", "csgo"),
+                            "source": "dmarket_internal",
+                            "strategy": "trending",
+                            "item_id": item.get("item", {}).get("itemId", ""),
+                            "liquidity": "medium"
+                        })
+                    elif "item" in item and "estimated_value" in item:
+                        # Редкие неправильно оцененные предметы
+                        all_items.append({
+                            "title": item.get("item", {}).get("title", "Неизвестный предмет"),
+                            "price": item.get("current_price", 0) * 100,  # Конвертируем в центы
+                            "profit": (item.get("estimated_value", 0) - item.get("current_price", 0)) * 100,
+                            "profit_percent": item.get("price_difference_percent", 0),
+                            "game": item.get("game", "csgo"),
+                            "source": "dmarket_internal",
+                            "strategy": "rare_item",
+                            "item_id": item.get("item", {}).get("itemId", ""),
+                            "liquidity": "low",
+                            "rare_traits": item.get("rare_traits", [])
+                        })
+        
+        # Фильтруем результаты по минимальной прибыли и проценту
+        filtered_items = [
+            item for item in all_items 
+            if (item.get("profit", 0) / 100 >= min_profit_amount and 
+                item.get("profit_percent", 0) >= min_profit_percent)
+        ]
+        
+        # Сортируем по проценту прибыли (от большего к меньшему)
+        filtered_items.sort(key=lambda x: x.get("profit_percent", 0), reverse=True)
+        
+        if not filtered_items:
+            await query.edit_message_text(
+                text=(
+                    f"ℹ️ <b>Не найдено подходящих предметов для режима {display_mode}.</b>\n\n"
+                    f"Попробуйте изменить параметры поиска или выбрать другой режим."
+                ),
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Сохраняем результаты в менеджере пагинации
+        pagination_manager.add_items_for_user(user_id, filtered_items, mode)
         
         # Отображаем результаты с пагинацией
-        await show_auto_stats_with_pagination(query, context)
+        items, current_page, total_pages = pagination_manager.get_page(user_id)
+        formatted_results = await format_results(items, mode)
         
-    except Exception as e:
-        # Получаем полный трейс ошибки для диагностики
-        error_traceback = traceback.format_exc()
-        logger.error(f"Ошибка в start_auto_trading: {str(e)}\n{error_traceback}")
+        # Создаем клавиатуру с пагинацией
+        keyboard = []
         
-        # Информируем пользователя об ошибке
-        error_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="auto_arbitrage")],
-            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="arbitrage")]
+        # Кнопки пагинации
+        if total_pages > 1:
+            pagination_row = []
+            if current_page > 0:
+                pagination_row.append(
+                    InlineKeyboardButton("⬅️ Назад", callback_data=f"paginate:prev:{mode}")
+                )
+            
+            pagination_row.append(
+                InlineKeyboardButton(f"{current_page + 1}/{total_pages}", callback_data="page_info")
+            )
+            
+            if current_page < total_pages - 1:
+                pagination_row.append(
+                    InlineKeyboardButton("➡️ Вперед", callback_data=f"paginate:next:{mode}")
+                )
+            
+            keyboard.append(pagination_row)
+        
+        # Кнопка запуска автоматической торговли (если доступна)
+        public_key = context.bot_data.get('dmarket_public_key', '')
+        secret_key = context.bot_data.get('dmarket_secret_key', '')
+        if not public_key or not secret_key:
+            try:
+                # Use the properly typed environ_type
+                public_key = environ_type.get('DMARKET_PUBLIC_KEY', '')
+                secret_key = environ_type.get('DMARKET_SECRET_KEY', '')
+            except Exception:
+                pass
+                
+        if (mode_type in ["mid", "pro"] and
+            public_key and secret_key and 
+            available_balance >= min_price):
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    "🤖 Запустить авто-торговлю", 
+                    callback_data=f"auto_trade:{mode}"
+                )
+            ])
+        
+        # Кнопка назад к выбору режима
+        keyboard.append([
+            InlineKeyboardButton("⬅️ Назад к выбору режима", callback_data="auto_arbitrage")
         ])
         
-        # Форматируем сообщение об ошибке для отображения
-        error_message = str(e)
-        # Обрезаем слишком длинное сообщение для Telegram
-        if len(error_message) > 200:
-            error_message = error_message[:200] + "..."
-            
+        # Отображаем результаты
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Добавляем информацию о найденных предметах
+        info_text = (
+            f"🔍 <b>Найдено {len(filtered_items)} предметов для режима {display_mode}.</b>\n"
+            f"💰 Доступный баланс: <b>${available_balance:.2f}</b>\n"
+            f"⏱️ Время выполнения: <b>{execution_time:.1f}с</b>\n\n"
+        )
+        
         await query.edit_message_text(
-            text=f"❌ Произошла ошибка при автоматическом арбитраже:\n{error_message}",
-            reply_markup=error_keyboard
+            text=info_text + formatted_results,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при запуске автоматического арбитража: {e}")
+        logger.error(traceback.format_exc())
+        
+        await query.edit_message_text(
+            text=(
+                f"⚠️ <b>Произошла ошибка при поиске предметов:</b>\n\n"
+                f"{str(e)}\n\n"
+                f"Пожалуйста, попробуйте еще раз или обратитесь к администратору."
+            ),
+            reply_markup=get_back_to_arbitrage_keyboard(),
+            parse_mode=ParseMode.HTML
         )
 
 
-async def check_balance_command(query: CallbackQuery, context: CallbackContext) -> None:
+async def check_balance_command(message: Union[CallbackQuery, Update], context: CallbackContext) -> None:
     """
     Проверяет баланс пользователя на DMarket.
     
     Args:
-        query: Объект запроса обратного вызова
+        message: Объект запроса (может быть CallbackQuery или Message)
         context: Контекст обратного вызова
     """
-    # Получаем API ключи из контекста или окружения
-    import os
+    # Определяем, какой тип объекта мы получили
+    is_callback = hasattr(message, 'callback_query') or hasattr(message, 'data')
     
+    # Получаем объект сообщения и идентификатор чата
+    if is_callback:
+        query = message if hasattr(message, 'data') else message.callback_query
+        chat_id = query.message.chat_id if hasattr(query, 'message') else query.from_user.id
+    else:
+        original_message = message.message
+        chat_id = original_message.chat_id
+        
+    # Получаем API ключи из контекста или окружения
     public_key = context.user_data.get("api_key", "") if hasattr(context, "user_data") else ""
     secret_key = context.user_data.get("api_secret", "") if hasattr(context, "user_data") else ""
     
     if not public_key or not secret_key:
-        public_key = os.environ.get("DMARKET_PUBLIC_KEY", "")
-        secret_key = os.environ.get("DMARKET_SECRET_KEY", "")
+        try:
+            # Use properly typed environ_type
+            public_key = environ_type.get("DMARKET_PUBLIC_KEY", "")
+            secret_key = environ_type.get("DMARKET_SECRET_KEY", "")
+        except Exception as e:
+            logger.error(f"Ошибка при получении API ключей из окружения: {e}")
     
     if not public_key or not secret_key:
-        await query.edit_message_text(
-            text=(
-                "❌ Ошибка: API ключи DMarket не настроены.\n\n"
-                "Для проверки баланса необходимо указать API ключи DMarket "
-                "с помощью команды /setup."
-            ),
-            reply_markup=get_back_to_arbitrage_keyboard()
-        )
+        if is_callback:
+            await query.edit_message_text(
+                text="❌ <b>API ключи не настроены.</b> Пожалуйста, настройте ключи командой /setup.",
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await original_message.reply_text(
+                "❌ <b>API ключи не настроены.</b> Пожалуйста, настройте ключи командой /setup.",
+                parse_mode=ParseMode.HTML
+            )
         return
     
-    # Отображаем сообщение о начале проверки
-    await query.edit_message_text(
-        text="⏳ Проверяем баланс на DMarket...",
-        reply_markup=None
-    )
+    # Показываем сообщение о проверке баланса
+    if is_callback:
+        await query.edit_message_text(
+            text="⏳ <b>Проверка баланса на DMarket...</b>",
+            reply_markup=None,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        status_message = await original_message.reply_text(
+            "⏳ <b>Проверка баланса на DMarket...</b>",
+            parse_mode=ParseMode.HTML
+        )
     
     try:
-        # Создаем API-клиент
+        # Создаем клиент DMarketAPI
         api_client = DMarketAPI(
-            public_key,
-            secret_key,
-            "https://api.dmarket.com",
+            public_key=public_key,
+            secret_key=secret_key,
+            # Use properly typed environ_type
+            api_url=environ_type.get("DMARKET_API_URL", "https://api.dmarket.com"),
             max_retries=3
         )
         
-        # Проверяем баланс
-        has_funds, balance = await check_user_balance(api_client)
+        # Получаем информацию о балансе
+        balance_info = await check_user_balance(api_client)
         
-        # Создаем клавиатуру для возврата
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="arbitrage")]
-        ])
-          # Отображаем результат
-        if has_funds:
-            await query.edit_message_text(
-                text=(
-                    f"✅ Баланс на DMarket: ${balance:.2f}\n\n"
-                    f"{'✅ Достаточно для торговли' if balance >= 1.0 else '⚠️ Недостаточно для торговли (мин. $1.00)'}"
-                ),
-                reply_markup=keyboard
+        # Проверка, получены ли данные о балансе
+        if balance_info:
+            balance = balance_info.get("balance", 0)
+            has_funds = balance_info.get("has_funds", False)
+            
+            # Получаем дополнительную информацию, если доступна
+            holds = balance_info.get("holds", 0)
+            pending = balance_info.get("pending", 0)
+            
+            status = "✅" if has_funds else "⚠️"
+            
+            balance_text = (
+                f"{status} <b>Баланс на DMarket:</b> <b>${balance:.2f}</b>\n\n"
             )
-        elif balance > 0:
-            # Есть баланс, но меньше минимального
+            
+            if holds > 0:
+                balance_text += f"🔒 На удержании: <b>${holds:.2f}</b>\n"
+                
+            if pending > 0:
+                balance_text += f"⏳ В ожидании: <b>${pending:.2f}</b>\n\n"
+            else:
+                balance_text += "\n"
+                
+            balance_text += f"Это <b>{'достаточно' if has_funds else 'недостаточно'}</b> средств для автоматической торговли."
+            
+            if is_callback:
+                await query.edit_message_text(
+                    text=balance_text,
+                    reply_markup=get_back_to_arbitrage_keyboard(),
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await status_message.edit_text(
+                    balance_text,
+                    parse_mode=ParseMode.HTML
+                )
+        else:
+            # В случае, если данные о балансе не получены
+            error_text = "❌ <b>Не удалось получить информацию о балансе.</b> Пожалуйста, проверьте API ключи."
+            
+            if is_callback:
+                await query.edit_message_text(
+                    text=error_text,
+                    reply_markup=get_back_to_arbitrage_keyboard(),
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await status_message.edit_text(
+                    error_text,
+                    parse_mode=ParseMode.HTML
+                )
+    except APIError as e:
+        error_message = await handle_api_error(e)
+        error_text = f"❌ <b>Ошибка API при проверке баланса:</b>\n\n{error_message}"
+        
+        if is_callback:
             await query.edit_message_text(
-                text=(
-                    f"⚠️ Баланс на DMarket: ${balance:.2f}\n\n"
-                    f"Недостаточно средств для торговли. "
-                    f"Пополните баланс на DMarket."
-                ),
-                reply_markup=keyboard
+                text=error_text,
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
             )
         else:
-            # Баланс равен 0, возможно из-за проблем с API
-            api_error_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Обновить API ключи", callback_data="setup")],
-                [InlineKeyboardButton("⬅️ Назад в меню", callback_data="arbitrage")]
-            ])
-            
-            await query.edit_message_text(
-                text=(
-                    "❌ Не удалось получить баланс DMarket\n\n"
-                    "Возможные причины:\n"
-                    "1. Неверные API ключи DMarket\n"
-                    "2. Истек срок действия API ключей\n"
-                    "3. Недостаточно прав доступа у API ключей\n\n"
-                    "Обновите API ключи в настройках."
-                ),
-                reply_markup=api_error_keyboard
+            await status_message.edit_text(
+                error_text,
+                parse_mode=ParseMode.HTML
             )
     except Exception as e:
         logger.error(f"Ошибка при проверке баланса: {str(e)}")
+        error_text = f"❌ <b>Произошла ошибка при проверке баланса:</b>\n\n{str(e)}"
         
-        # Информируем пользователя об ошибке
-        error_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="check_balance")],
-            [InlineKeyboardButton("⬅️ Назад в меню", callback_data="arbitrage")]
-        ])
-        
-        await query.edit_message_text(
-            text=f"❌ Ошибка при проверке баланса:\n{str(e)}",
-            reply_markup=error_keyboard
-        )
+        if is_callback:
+            await query.edit_message_text(
+                text=error_text,
+                reply_markup=get_back_to_arbitrage_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await status_message.edit_text(
+                error_text,
+                parse_mode=ParseMode.HTML
+            )
+    finally:
+        # Закрываем клиент API
+        if 'api_client' in locals() and hasattr(api_client, '_close_client'):
+            try:
+                await api_client._close_client()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии клиента API: {str(e)}")
 
 
 async def show_auto_stats(query: CallbackQuery, context: CallbackContext) -> None:
@@ -575,11 +930,152 @@ async def stop_auto_trading(query: CallbackQuery, context: CallbackContext) -> N
     # Отображаем сообщение о остановке
     await query.edit_message_text(
         text=(
-            "🛑 Автоматическая торговля отключена.\n\n"
+            "🛑 <b>Автоматическая торговля отключена.</b>\n\n"
             "Все текущие операции будут завершены, но новые торговые операции "
             "выполняться не будут."
         ),
-        reply_markup=keyboard
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
     )
     
     logger.info(f"Автоторговля отключена для пользователя {user_id}")
+
+
+async def handle_auto_trade(query, context, mode: str):
+    """
+    Запускает автоматическую торговлю для выбранного режима.
+    
+    Args:
+        query: Объект запроса обратного вызова
+        context: Контекст обратного вызова
+        mode: Режим автоарбитража (low, medium, high)
+    """
+    from src.telegram_bot.utils.api_client import setup_api_client
+    from src.utils.api_error_handling import APIError, handle_api_error
+    from telegram.constants import ChatAction
+    from telegram import ParseMode
+    from src.telegram_bot.keyboards import get_back_to_arbitrage_keyboard
+    from src.telegram_bot.auto_arbitrage_scanner import scan_multiple_games, check_user_balance
+    from src.telegram_bot.pagination import pagination_manager
+    from src.dmarket.arbitrage import GAMES
+    
+    # Проверяем баланс перед запуском
+    api_client = setup_api_client()
+    if not api_client:
+        await query.edit_message_text(
+            "❌ <b>Не удалось создать API-клиент.</b>\n\n"
+            "Проверьте корректность API ключей и доступность сервера.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_back_to_arbitrage_keyboard()
+        )
+        return
+        
+    try:
+        # Проверяем баланс пользователя
+        balance_data = await check_user_balance(api_client)
+        
+        if not balance_data.get("has_funds", False):
+            available = balance_data.get("available_balance", 0.0)
+            await query.edit_message_text(
+                f"⚠️ <b>Недостаточно средств для автоматической торговли</b>\n\n"
+                f"Доступно: ${available:.2f} USD\n"
+                f"Необходимо минимум: $1.00 USD",
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_back_to_arbitrage_keyboard()
+            )
+            return
+            
+        # Отправка индикатора загрузки
+        await query.message.chat.send_action(ChatAction.TYPING)
+        
+        # Все доступные игры для сканирования
+        games = ["csgo", "dota2", "rust", "tf2"]
+        
+        # Настраиваем параметры в зависимости от режима
+        if mode == "low":
+            min_profit = 5.0
+            max_price = 20.0
+            risk_level = "low"
+        elif mode == "high":
+            min_profit = 20.0
+            max_price = 100.0
+            risk_level = "high"
+        else:  # medium
+            min_profit = 10.0
+            max_price = 50.0
+            risk_level = "medium"
+        
+        # Сообщаем пользователю о начале сканирования
+        await query.edit_message_text(
+            f"🔍 <b>Начинаем полное сканирование DMarket...</b>\n\n"
+            f"🎮 Игры: {', '.join(GAMES.get(g, g) for g in games)}\n"
+            f"💰 Минимальная прибыль: {min_profit}%\n"
+            f"⏳ Это может занять некоторое время...",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Запускаем сканирование
+        results = await scan_multiple_games(
+            games=games,
+            mode=mode,
+            max_items_per_game=15,
+            price_from=1.0,
+            price_to=max_price
+        )
+        
+        # Обрабатываем результаты
+        total_items = sum(len(items) for items in results.values())
+        
+        if total_items == 0:
+            await query.edit_message_text(
+                "ℹ️ <b>Не найдено выгодных предметов для автоматической торговли.</b>\n\n"
+                "Попробуйте изменить параметры поиска или повторить позже.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_back_to_arbitrage_keyboard()
+            )
+            return
+        
+        # Преобразуем результаты в плоский список для пагинации
+        all_items = []
+        for game, items in results.items():
+            for item in items:
+                item["game"] = game  # Добавляем код игры в элемент
+                all_items.append(item)
+        
+        # Сохраняем результаты в менеджере пагинации
+        pagination_manager.add_items(query.from_user.id, all_items, mode)
+        
+        # Показываем первую страницу результатов
+        await show_auto_stats_with_pagination(query, context)
+        
+    except APIError as e:
+        # Используем улучшенную обработку ошибок API
+        error_message = await handle_api_error(e)
+        await query.edit_message_text(
+            f"❌ <b>Ошибка API DMarket при сканировании:</b>\n\n{error_message}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_back_to_arbitrage_keyboard()
+        )
+    except Exception as e:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка при автоторговле: {e}")
+        tb_string = traceback.format_exc()
+        logger.error(f"Traceback: {tb_string}")
+        
+        await query.edit_message_text(
+            f"❌ <b>Ошибка при выполнении автоматического сканирования:</b>\n\n{str(e)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_back_to_arbitrage_keyboard()
+        )
+
+# Export all functions
+__all__ = [
+    'start_auto_trading',
+    'stop_auto_trading',
+    'check_balance_command',
+    'handle_pagination',
+    'show_auto_stats_with_pagination',
+    'handle_auto_trade',
+]
