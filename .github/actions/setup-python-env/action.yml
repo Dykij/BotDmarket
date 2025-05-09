@@ -32,8 +32,9 @@ runs:
       if: inputs.install-poetry == 'true'
       shell: bash
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
+        python -m pip install poetry
         echo "$HOME/.local/bin" >> $GITHUB_PATH
+        poetry --version || echo "Poetry installation may have issues"
         
     - name: Configure Poetry
       if: inputs.install-poetry == 'true'
@@ -46,7 +47,9 @@ runs:
       if: inputs.install-poetry == 'true'
       uses: actions/cache@v4
       with:
-        path: .venv
+        path: |
+          .venv
+          ~/.cache/pypoetry
         key: venv-${{ runner.os }}-python-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
           venv-${{ runner.os }}-python-${{ inputs.python-version }}-
@@ -55,7 +58,22 @@ runs:
       if: inputs.install-poetry == 'true'
       shell: bash
       run: |
-        poetry install --no-interaction $([ "${{ inputs.install-dev-deps }}" == "false" ] && echo "--no-dev")
+        POETRY_VERSION=$(poetry --version | cut -d' ' -f3)
+        echo "Poetry version: $POETRY_VERSION"
+        
+        if [ "$(echo $POETRY_VERSION | cut -d'.' -f1)" -ge "1" ] && [ "$(echo $POETRY_VERSION | cut -d'.' -f2)" -ge "2" ]; then
+          if [ "${{ inputs.install-dev-deps }}" == "false" ]; then
+            poetry install --no-interaction --without dev
+          else
+            poetry install --no-interaction
+          fi
+        else
+          if [ "${{ inputs.install-dev-deps }}" == "false" ]; then
+            poetry install --no-interaction --no-dev
+          else
+            poetry install --no-interaction
+          fi
+        fi
         
     - name: Install dependencies with pip
       if: inputs.install-poetry != 'true'
@@ -88,4 +106,5 @@ runs:
     - name: Set PYTHONPATH
       shell: bash
       run: |
-        echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV 
+        echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
+        export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH 

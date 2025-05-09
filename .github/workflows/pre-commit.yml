@@ -69,17 +69,23 @@ jobs:
               -   id: ruff
                   args: [--fix, --exit-non-zero-on-fix]
           EOF
+          echo "Created default pre-commit config"
       
       - name: Run pre-commit hooks
         run: |
           # Try to run pre-commit, but don't fail the build if it has issues
-          pre-commit run --all-files || echo "Pre-commit had some issues but we'll continue"
+          pre-commit run --all-files || {
+            echo "::warning::Pre-commit had some issues but we'll continue"
+            true  # Ensure the step doesn't fail
+          }
       
       - name: Check for files changed during pre-commit
         id: git-check
         run: |
-          git status --porcelain
-          if [[ -n $(git status --porcelain) ]]; then
+          # Используем более совместимый синтаксис для проверки изменений
+          if [ -n "$(git status --porcelain)" ]; then
             echo "::warning::Files were modified by pre-commit. Consider running pre-commit locally and committing changes."
-            git diff
+            git diff || echo "Could not show diff"
+          else
+            echo "No files were modified by pre-commit hooks"
           fi 
