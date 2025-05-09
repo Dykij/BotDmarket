@@ -1,0 +1,84 @@
+name: Quick Tests
+
+on:
+  push:
+    branches: [ main, master, develop, feature/* ]
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  quick-test:
+    name: Run Quick Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          elif [ -f pyproject.toml ]; then
+            pip install poetry
+            poetry install --no-interaction
+          fi
+          pip install pytest pytest-asyncio pytest-mock
+      
+      - name: Create .env file from example
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+      
+      - name: Check for test files
+        id: check-tests
+        run: |
+          if [ -f tests/dmarket/test_dmarket_api_simplified.py ] && [ -f tests/telegram_bot/test_arbitrage_scanner_simplified.py ]; then
+            echo "simplified_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "simplified_tests=false" >> $GITHUB_OUTPUT
+            echo "Simplified test files not found, will run basic tests instead"
+          fi
+      
+      - name: Run simplified test suite
+        if: steps.check-tests.outputs.simplified_tests == 'true'
+        run: |
+          # Set PYTHONPATH for correct imports
+          export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
+          # Run only the simplified test suites that use mocks
+          python -m pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v
+        env:
+          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
+          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
+          
+      - name: Run basic tests
+        if: steps.check-tests.outputs.simplified_tests == 'false'
+        run: |
+          # Set PYTHONPATH for correct imports
+          export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
+          # Run a subset of tests that should be quick and reliable
+          python -m pytest -xvs tests/ -k "not integration and not slow" --maxfail=5
+        env:
+          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
+          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }} 

@@ -29,65 +29,93 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for better metrics
       
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-python-env
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          install-poetry: ${{ hashFiles('poetry.lock') != '' && 'true' || 'false' }}
+          install-dev-deps: 'true'
+          create-env-file: 'true'
       
-      - name: Install and configure Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.7.1
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-      
-      - name: Set up Poetry cache
-        id: poetry-cache
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: ${{ runner.os }}-python-${{ matrix.python-version }}-venv-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-python-${{ matrix.python-version }}-venv-
-      
-      - name: Install dependencies
-        if: steps.poetry-cache.outputs.cache-hit != 'true'
+      - name: Check for Poetry vs pip installation
+        id: check-poetry
         run: |
-          poetry install --no-interaction --no-root
-          poetry install --no-interaction
+          if [ -f poetry.lock ]; then
+            echo "uses_poetry=true" >> $GITHUB_OUTPUT
+          else
+            echo "uses_poetry=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: Lint with Ruff
         run: |
-          poetry run ruff check . --output-format=github
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run python -m ruff check . --output-format=github
+          else
+            python -m ruff check . --output-format=github
+          fi
       
       - name: Check formatting with Black
         run: |
-          poetry run black . --check
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run black . --check
+          else
+            black . --check
+          fi
       
       - name: Type check with mypy
         run: |
-          poetry run mypy .
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run mypy .
+          else
+            mypy .
+          fi
       
-      - name: Create .env file from example
+      - name: Check for test files
+        id: check-tests
         run: |
-          if [ -f .env.example ]; then
-            cp .env.example .env
+          if [ -f tests/dmarket/test_dmarket_api_simplified.py ] && [ -f tests/telegram_bot/test_arbitrage_scanner_simplified.py ]; then
+            echo "simplified_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "simplified_tests=false" >> $GITHUB_OUTPUT
+            echo "Simplified test files not found, will run alternative tests"
           fi
       
       - name: Run simplified tests
+        if: steps.check-tests.outputs.simplified_tests == 'true'
         run: |
-          # Set PYTHONPATH for correct imports
-          export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
           # Run simplified test suite that uses mocks
-          poetry run pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v
+          else
+            pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v
+          fi
+        env:
+          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
+          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
+      
+      - name: Run alternative tests
+        if: steps.check-tests.outputs.simplified_tests == 'false'
+        run: |
+          # Look for general test files in the expected locations
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run pytest tests/dmarket/ tests/telegram_bot/ -k "not integration and not slow" -v --maxfail=3
+          else
+            pytest tests/dmarket/ tests/telegram_bot/ -k "not integration and not slow" -v --maxfail=3
+          fi
+        env:
+          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
+          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
       
       - name: Run tests with pytest and coverage
         run: |
-          # Set PYTHONPATH for correct imports
-          export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
           # Run tests with coverage
-          poetry run pytest --cov=src --cov-report=xml --cov-report=term
+          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
+            poetry run pytest --cov=src --cov-report=xml --cov-report=term
+          else
+            pytest --cov=src --cov-report=xml --cov-report=term
+          fi
         env:
           DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
           DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}

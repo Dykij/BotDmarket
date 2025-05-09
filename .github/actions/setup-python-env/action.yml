@@ -1,0 +1,91 @@
+name: 'Setup Python Environment'
+description: 'Sets up Python, installs dependencies, and configures environments'
+
+inputs:
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+  install-poetry:
+    description: 'Whether to install and use Poetry'
+    required: false
+    default: 'false'
+  install-dev-deps:
+    description: 'Whether to install development dependencies'
+    required: false
+    default: 'true'
+  create-env-file:
+    description: 'Whether to create .env file from .env.example'
+    required: false
+    default: 'true'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+    
+    - name: Install Poetry
+      if: inputs.install-poetry == 'true'
+      shell: bash
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        
+    - name: Configure Poetry
+      if: inputs.install-poetry == 'true'
+      shell: bash
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
+        
+    - name: Set up Poetry cache
+      if: inputs.install-poetry == 'true'
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-python-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          venv-${{ runner.os }}-python-${{ inputs.python-version }}-
+          
+    - name: Install dependencies with Poetry
+      if: inputs.install-poetry == 'true'
+      shell: bash
+      run: |
+        poetry install --no-interaction $([ "${{ inputs.install-dev-deps }}" == "false" ] && echo "--no-dev")
+        
+    - name: Install dependencies with pip
+      if: inputs.install-poetry != 'true'
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        elif [ -f pyproject.toml ] && [ ! -f poetry.lock ]; then
+          pip install .
+        fi
+        
+        if [ "${{ inputs.install-dev-deps }}" == "true" ]; then
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install pytest pytest-cov pytest-asyncio pytest-mock black ruff mypy
+          fi
+        fi
+        
+    - name: Create .env file from example
+      if: inputs.create-env-file == 'true'
+      shell: bash
+      run: |
+        if [ -f .env.example ] && [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env file from .env.example"
+        fi
+        
+    - name: Set PYTHONPATH
+      shell: bash
+      run: |
+        echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV 
