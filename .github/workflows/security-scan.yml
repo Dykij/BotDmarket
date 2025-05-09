@@ -68,4 +68,10 @@ jobs:
           fi
           
       - name: Run safety check
-        run: safety check -r requirements.txt --full-report 
+        run: |
+          if [ -f requirements.txt ]; then
+            safety check -r requirements.txt --full-report
+          else
+            echo "requirements.txt не найден, пропускаю проверку зависимостей"
+            exit 0
+          fi 
