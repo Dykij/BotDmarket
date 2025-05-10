@@ -104,11 +104,7 @@ async def test_handle_sales_history_callback_success(
     assert len(keyboard.inline_keyboard) > 0
 
     # Проверяем, что в клавиатуре есть кнопка анализа
-    assert any(
-        "Анализ продаж" in button.text
-        for row in keyboard.inline_keyboard
-        for button in row
-    )
+    assert any("Анализ продаж" in button.text for row in keyboard.inline_keyboard for button in row)
 
 
 @pytest.mark.asyncio

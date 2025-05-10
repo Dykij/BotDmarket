@@ -1,142 +1,107 @@
-# DMarket Tools & Signature Builder
+# DMarket Telegram Bot
 
-Инструменты и примеры для работы с DMarket API: генерация подписей, автоматизация торговли, Telegram-бот, арбитраж и тестирование.
+A Telegram bot for DMarket platform operations and market analytics.
 
-## Основные возможности
-- Генерация подписей для запросов к DMarket API (см. `src/dmarket/dmarket_api.py`)
-- Примеры работы с публичными и приватными эндпоинтами
-- Telegram-бот для автоматического арбитража (`src/telegram_bot/`)
-- Модули для анализа рынка, истории продаж, фильтрации и автоматизации
-- Поддержка тестирования (pytest)
-- Инструменты для контроля качества кода (Ruff, Black, mypy)
-
-## Быстрый старт
-
-1. Клонируйте репозиторий и создайте виртуальное окружение:
-   ```pwsh
-   git clone https://github.com/yourusername/dmarket-tools.git
-   cd dmarket-tools
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
-   ```
-
-2. Настройте переменные окружения (создайте `.env`):
-   ```env
-   DMARKET_PUBLIC_KEY=your_public_key
-   DMARKET_SECRET_KEY=your_secret_key
-   TELEGRAM_BOT_TOKEN=your_telegram_token
-   ```
-
-3. Запустите пример работы с API:
-   ```pwsh
-   python scripts/dmarket_api_example.py
-   ```
-
-4. Запуск Telegram-бота:
-   ```pwsh
-   python -m src.telegram_bot.bot_v2
-   ```
-
-## Документация
-- [Официальная документация DMarket API](https://docs.dmarket.com/v1/swagger.html)
-- [Руководство по лимитам и обработке ошибок](docs/rate_limiter_and_api_handling_guide.md)
-- [Руководство по Telegram-боту](docs/telegram_bot_guide.md)
-- [Улучшения арбитража](docs/arbitrage_improvements.md)
-- [VS Code настройки](docs/vscode_setup.md)
-- [Рекомендации по Copilot](COPILOT_GUIDE.md)
-- [Структура проекта](docs/project_structure.md)
-- [Руководство по тестированию](docs/testing_guide.md)
-- [Логирование и обработка ошибок](docs/logging_and_error_handling.md)
-- [Отчет о внесенных улучшениях](docs/additional_improvements_report.md)
-
-## Структура проекта
+## Project Structure
 
 ```
-dmarket-tools/
-├── src/                   # Основной код проекта
-│   ├── dmarket/           # API клиент и логика работы с DMarket
-│   ├── telegram_bot/      # Реализация Telegram-бота
-│   └── utils/             # Вспомогательные модули и утилиты
-├── tests/                 # Тесты
-├── scripts/               # Примеры и утилиты
-├── docs/                  # Документация
-├── config/                # Конфигурационные файлы (устаревшие)
-└── .env                   # Файл с переменными окружения (создать вручную)
+BotDmarket/
+├── config/              # Configuration files
+├── data/                # Data storage
+├── docs/                # Documentation
+├── logs/                # Log files
+├── scripts/             # Utility scripts
+├── src/                 # Source code
+│   ├── dmarket/         # DMarket API client
+│   ├── telegram_bot/    # Telegram bot implementation
+│   └── utils/           # Utility functions
+└── tests/               # Tests
 ```
 
-## Настройка окружения для разработки
+## Installation
 
-### Настройка PYTHONPATH
+### Using pip
 
-Для корректной работы импортов при запуске тестов и скриптов, убедитесь, что корневая директория проекта добавлена в PYTHONPATH:
-
-```pwsh
-# Временная настройка в текущей сессии
-$env:PYTHONPATH = "$PWD"
-
-# Для Linux/macOS:
-# export PYTHONPATH=$(pwd)
+```bash
+pip install -e .
 ```
 
-В VS Code также можно настроить запуск тестов с корректным PYTHONPATH через settings.json:
+### Development Setup
 
-```json
-{
-    "python.testing.pytestEnabled": true,
-    "python.envFile": "${workspaceFolder}/.env",
-    "python.analysis.extraPaths": ["${workspaceFolder}"]
-}
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# For development dependencies
+pip install -e ".[dev]"
 ```
 
-### Настройка mypy
+### Using Docker
 
-Для статической проверки типов используется mypy. Конфигурация находится в `mypy.ini` в корне проекта.
+```bash
+# Build the image
+docker-compose build
 
-## Тестирование
-Для запуска тестов:
-```pwsh
-pytest tests
+# Run the container
+docker-compose up -d
 ```
 
-## Качество кода
-- Форматирование: `black .`
-- Линтинг: `ruff check .`
-- Проверка типов: `mypy .`
+## Environment Variables
 
-## Примеры
-Пример генерации подписи для приватного запроса:
-```python
-from src.dmarket.dmarket_api import DMarketAPI
+Create a `.env` file based on the provided `.env.example`:
 
-api = DMarketAPI(public_key, secret_key)
-headers = api._generate_signature("POST", "/exchange/v1/target/create", body_json)
+```
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+DMARKET_PUBLIC_KEY=your_dmarket_public_key
+DMARKET_SECRET_KEY=your_dmarket_secret_key
 ```
 
-Пример использования системы логирования и обработки ошибок:
-```python
-from src.utils.logging_utils import get_logger, log_exceptions
-from src.utils.exception_handling import handle_exceptions, APIError
+## Usage
 
-# Создаем логгер с контекстом
-logger = get_logger("my_module", {"user_id": 12345})
+### Running the Bot
 
-# Используем декоратор для автоматического логирования исключений
-@log_exceptions
-def my_function():
-    logger.info("Выполняется действие", extra={"context": {"action": "check_balance"}})
-    # ...
+```bash
+# Run directly with Python
+python -m src
 
-# Обработка исключений
-@handle_exceptions(default_error_message="Ошибка при работе с API")
-async def make_api_request():
-    try:
-        # ...
-    except Exception as e:
-        raise APIError("Ошибка при запросе", status_code=500)
+# Or using the Makefile
+make run
+
+# Or using Docker
+make docker-run
 ```
 
-Пример обработки ошибок и лимитов: см. [docs/rate_limiter_and_api_handling_guide.md](docs/rate_limiter_and_api_handling_guide.md)
+### Running Tests
 
----
-Проект поддерживает автоматическую проверку качества кода и тесты через GitHub Actions (см. `.github/workflows/ci.yml`).
+```bash
+# Run all tests
+make test
+
+# Run with coverage
+make test-cov
+```
+
+### Development Tools
+
+```bash
+# Lint code
+make lint
+
+# Format code
+make format
+
+# Generate documentation
+make docs
+```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please check the CONTRIBUTING.md file for guidelines.

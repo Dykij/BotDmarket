@@ -53,9 +53,7 @@ async def test_handle_game_filters_csgo(mock_update, mock_context):
 
     # Создаем мок для FilterFactory.get_filter
     mock_filter = MagicMock()
-    mock_filter.get_filter_description.return_value = (
-        "Цена: $1.00 - $500.00\nFloat: 0.0 - 1.0"
-    )
+    mock_filter.get_filter_description.return_value = "Цена: $1.00 - $500.00\nFloat: 0.0 - 1.0"
 
     with patch(
         "src.telegram_bot.game_filter_handlers.FilterFactory.get_filter",
@@ -82,8 +80,7 @@ async def test_handle_game_filters_csgo(mock_update, mock_context):
             for button in row
         )
         assert any(
-            button.text == "🔶 Внешний вид"
-            and "filter:exterior:csgo" in button.callback_data
+            button.text == "🔶 Внешний вид" and "filter:exterior:csgo" in button.callback_data
             for row in keyboard
             for button in row
         )
@@ -97,9 +94,7 @@ async def test_handle_game_filters_dota2(mock_update, mock_context):
 
     # Создаем мок для FilterFactory.get_filter
     mock_filter = MagicMock()
-    mock_filter.get_filter_description.return_value = (
-        "Цена: $1.00 - $500.00\nГерои: Любые"
-    )
+    mock_filter.get_filter_description.return_value = "Цена: $1.00 - $500.00\nГерои: Любые"
 
     with patch(
         "src.telegram_bot.game_filter_handlers.FilterFactory.get_filter",
@@ -130,7 +125,7 @@ async def test_handle_filter_callback_price(mock_update, mock_context):
 
     # Мокируем функцию handle_price_filter
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_price_filter"
+        "src.telegram_bot.game_filter_handlers.handle_price_filter",
     ) as mock_price_filter:
         mock_price_filter.return_value = None
 
@@ -149,7 +144,7 @@ async def test_handle_filter_callback_float(mock_update, mock_context):
 
     # Мокируем функцию handle_float_filter
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_float_filter"
+        "src.telegram_bot.game_filter_handlers.handle_float_filter",
     ) as mock_float_filter:
         mock_float_filter.return_value = None
 
@@ -168,7 +163,7 @@ async def test_handle_filter_callback_reset(mock_update, mock_context):
 
     # Мокируем функцию handle_reset_filters
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_reset_filters"
+        "src.telegram_bot.game_filter_handlers.handle_reset_filters",
     ) as mock_reset:
         mock_reset.return_value = None
 
@@ -187,7 +182,7 @@ async def test_handle_filter_callback_search(mock_update, mock_context):
 
     # Мокируем функцию handle_search_with_filters
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_search_with_filters"
+        "src.telegram_bot.game_filter_handlers.handle_search_with_filters",
     ) as mock_search:
         mock_search.return_value = None
 
@@ -206,7 +201,7 @@ async def test_handle_filter_callback_change_game(mock_update, mock_context):
 
     # Мокируем функцию handle_change_game_filter
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_change_game_filter"
+        "src.telegram_bot.game_filter_handlers.handle_change_game_filter",
     ) as mock_change:
         mock_change.return_value = None
 
@@ -252,9 +247,7 @@ async def test_handle_float_filter(mock_update, mock_context):
 
     # Проверяем, что в клавиатуре есть правильные диапазоны float
     keyboard = kwargs["reply_markup"].inline_keyboard
-    assert any(
-        "0.00-0.07" in button.text for row in keyboard for button in row  # Factory New
-    )
+    assert any("0.00-0.07" in button.text for row in keyboard for button in row)  # Factory New
 
 
 @pytest.mark.asyncio
@@ -336,10 +329,7 @@ async def test_handle_search_with_filters(mock_execute_api, mock_update, mock_co
     message_text = args[0]
 
     # В сообщении должны быть найденные предметы
-    assert (
-        "найдено 2 предмет" in message_text.lower()
-        or "найдено: 2" in message_text.lower()
-    )
+    assert "найдено 2 предмет" in message_text.lower() or "найдено: 2" in message_text.lower()
 
 
 @pytest.mark.asyncio
@@ -369,7 +359,7 @@ async def test_handle_back_to_filters_callback(mock_update, mock_context):
     """Тестирует callback для возврата к меню фильтров."""
     # Настройка мока для handle_game_filters
     with patch(
-        "src.telegram_bot.game_filter_handlers.handle_game_filters"
+        "src.telegram_bot.game_filter_handlers.handle_game_filters",
     ) as mock_game_filters:
         mock_game_filters.return_value = None
 

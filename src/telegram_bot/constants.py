@@ -1,12 +1,11 @@
-"""
-Константы для работы Telegram-бота.
+"""Константы для работы Telegram-бота.
 """
 
 # Основные константы и настройки для Telegram-бота DMarket
 import os
 
 # Путь к .env файлу
-ENV_PATH = os.path.join(os.path.dirname(__file__), '.env')
+ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 
 # Путь к файлу профилей пользователей
 USER_PROFILES_FILE = os.path.join(os.path.dirname(__file__), "user_profiles.json")
@@ -16,7 +15,7 @@ LANGUAGES = {
     "ru": "Русский",
     "en": "English",
     "es": "Español",
-    "de": "Deutsch"
+    "de": "Deutsch",
 }
 
 # Названия режимов арбитража
@@ -25,7 +24,7 @@ ARBITRAGE_MODES = {
     "mid": "Средний трейдер",
     "pro": "Trade Pro",
     "best": "Лучшие возможности",
-    "auto": "Авто-арбитраж"
+    "auto": "Авто-арбитраж",
 }
 
 # Константы для хранения ценовых оповещений

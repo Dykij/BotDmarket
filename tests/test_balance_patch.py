@@ -1,10 +1,9 @@
-"""
-Тестирование патча эндпоинта баланса в DMarket API.
+"""Тестирование патча эндпоинта баланса в DMarket API.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-import logging
 
 from src.dmarket.balance_patch import apply_balance_patch
 from src.dmarket.dmarket_api_balance_fix import patched_get_user_balance
@@ -12,9 +11,7 @@ from src.dmarket.dmarket_api_balance_fix import patched_get_user_balance
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_string_usd():
-    """
-    Проверяет корректное преобразование строкового значения баланса
-    """
+    """Проверяет корректное преобразование строкового значения баланса"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
     mock_api._request = AsyncMock(return_value={"usd": "15.50"})
@@ -33,9 +30,7 @@ async def test_patched_get_user_balance_string_usd():
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_number_usd():
-    """
-    Проверяет корректное преобразование числового значения баланса
-    """
+    """Проверяет корректное преобразование числового значения баланса"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
     mock_api._request = AsyncMock(return_value={"usd": 10.25})
@@ -54,9 +49,7 @@ async def test_patched_get_user_balance_number_usd():
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_correct_format():
-    """
-    Проверяет обработку данных, уже находящихся в правильном формате
-    """
+    """Проверяет обработку данных, уже находящихся в правильном формате"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
     mock_api._request = AsyncMock(return_value={"usd": {"amount": 2000}})
@@ -75,17 +68,17 @@ async def test_patched_get_user_balance_correct_format():
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_fallback_endpoint():
-    """
-    Проверяет использование запасного эндпоинта при ошибке основного
-    """
+    """Проверяет использование запасного эндпоинта при ошибке основного"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
 
     # Настраиваем mock, чтобы первый вызов вызвал исключение
-    mock_api._request = AsyncMock(side_effect=[
-        Exception("API Error"),  # первый вызов вызывает исключение
-        {"balance": {"usd": 3000}}  # второй вызов возвращает баланс в другом формате
-    ])
+    mock_api._request = AsyncMock(
+        side_effect=[
+            Exception("API Error"),  # первый вызов вызывает исключение
+            {"balance": {"usd": 3000}},  # второй вызов возвращает баланс в другом формате
+        ]
+    )
 
     # Вызываем тестируемую функцию
     result = await patched_get_user_balance(mock_api)
@@ -103,9 +96,7 @@ async def test_patched_get_user_balance_fallback_endpoint():
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_usdAvailableToWithdraw():
-    """
-    Проверяет обработку баланса в формате usdAvailableToWithdraw
-    """
+    """Проверяет обработку баланса в формате usdAvailableToWithdraw"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
     mock_api._request = AsyncMock(return_value={"usdAvailableToWithdraw": "25.75"})
@@ -124,9 +115,7 @@ async def test_patched_get_user_balance_usdAvailableToWithdraw():
 
 @pytest.mark.asyncio
 async def test_patched_get_user_balance_invalid_response():
-    """
-    Проверяет возврат нулевого баланса при некорректном ответе
-    """
+    """Проверяет возврат нулевого баланса при некорректном ответе"""
     # Создаем мок объекта DMarketAPI
     mock_api = AsyncMock()
     mock_api._request = AsyncMock(return_value={"invalid_key": "value"})
@@ -146,9 +135,7 @@ async def test_patched_get_user_balance_invalid_response():
 @patch("src.dmarket.dmarket_api_balance_fix.logger")
 @patch("src.dmarket.dmarket_api.DMarketAPI")
 def test_apply_balance_patch(mock_dmarket_api, mock_logger):
-    """
-    Проверяет корректное применение патча к классу DMarketAPI
-    """
+    """Проверяет корректное применение патча к классу DMarketAPI"""
     # Вызываем тестируемую функцию
     result = apply_balance_patch()
 
@@ -156,7 +143,9 @@ def test_apply_balance_patch(mock_dmarket_api, mock_logger):
     assert result is True
 
     # Проверяем, что логгер вызывается с правильными сообщениями
-    mock_logger.info.assert_any_call("Применяем патч для исправления эндпоинта баланса в DMarketAPI")
+    mock_logger.info.assert_any_call(
+        "Применяем патч для исправления эндпоинта баланса в DMarketAPI"
+    )
     mock_logger.info.assert_any_call("Патч успешно применен")
 
     # Проверяем, что метод get_user_balance был заменен

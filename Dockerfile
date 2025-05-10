@@ -1,11 +1,14 @@
 # Использовать Alpine Linux для минимизации уязвимостей
-FROM python:alpine
+FROM python:3.11-slim
 
 # Установка рабочей директории внутри контейнера
 WORKDIR /app
 
 # Установка зависимостей для сборки C-расширений при необходимости
 RUN apk add --no-cache gcc musl-dev linux-headers
+
+# Создание директории для логов
+RUN mkdir -p /app/logs /app/data
 
 # Копирование файлов зависимостей
 COPY requirements.txt .
@@ -20,6 +23,14 @@ COPY . .
 ENV DMARKET_PUBLIC_KEY=""
 ENV DMARKET_SECRET_KEY=""
 ENV TELEGRAM_BOT_TOKEN=""
+ENV DMARKET_API_URL="https://api.dmarket.com"
+ENV PYTHONPATH="/app"
+ENV LOG_LEVEL="INFO"
+
+# Use a non-root user for better security
+RUN useradd -m botuser && \
+    chown -R botuser:botuser /app
+USER botuser
 
 # Запуск приложения
-CMD ["python", "main.py"]
+CMD ["python", "-m", "src"]

@@ -194,7 +194,9 @@ def analyze_test_purposes(test_files: List[str], base_dir: str) -> Dict[str, Lis
 
         # Ищем комментарий с упоминанием модуля
         docstring_match = re.search(
-            r'""".*?(для|модул[а-я]+)\s+([\w\.]+).*?"""', content, re.DOTALL
+            r'""".*?(для|модул[а-я]+)\s+([\w\.]+).*?"""',
+            content,
+            re.DOTALL,
         )
         tested_module = None
         if docstring_match:

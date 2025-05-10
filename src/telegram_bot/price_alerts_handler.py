@@ -5,7 +5,6 @@
 """
 
 import asyncio
-from typing import List
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -17,7 +16,7 @@ from telegram.ext import (
     filters,
 )
 
-from src.dmarket.dmarket_api_fixed import DMarketAPI
+from src.dmarket.dmarket_api import DMarketAPI
 from src.dmarket.realtime_price_watcher import PriceAlert, RealtimePriceWatcher
 from src.telegram_bot.constants import PRICE_ALERT_STORAGE_KEY
 
@@ -463,7 +462,7 @@ class PriceAlertsHandler:
         """
         # TODO: Реализовать отправку уведомления пользователю
 
-    def get_handlers(self) -> List:
+    def get_handlers(self) -> list:
         """Возвращает список обработчиков для регистрации в диспетчере.
 
         Returns:

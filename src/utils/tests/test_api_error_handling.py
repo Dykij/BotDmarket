@@ -68,7 +68,9 @@ def test_specialized_errors():
 
     # BadRequestError
     bad_request_error = BadRequestError(
-        "Bad request", 400, {"error": "Invalid parameters"}
+        "Bad request",
+        400,
+        {"error": "Invalid parameters"},
     )
     assert isinstance(bad_request_error, APIError)
     assert bad_request_error.status_code == 400
@@ -245,7 +247,7 @@ async def test_retry_request_with_retry():
         side_effect=[
             APIError("First attempt failed", 500),
             {"data": "test data"},
-        ]
+        ],
     )
 
     # Создаем мок лимитера

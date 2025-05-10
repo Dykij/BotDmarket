@@ -32,7 +32,8 @@ def dmarket_api():
     Обходит необходимость наличия реальных ключей API.
     """
     with patch(
-        "src.dmarket.dmarket_api.DMarketAPI.__init__", return_value=None
+        "src.dmarket.dmarket_api.DMarketAPI.__init__",
+        return_value=None,
     ) as mock_init:
         from src.dmarket.dmarket_api import DMarketAPI
 

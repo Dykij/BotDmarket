@@ -1,11 +1,10 @@
 """Unit tests for the market visualizer module."""
 
 import io
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import matplotlib.pyplot as plt
-import numpy as np
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pytest
 from PIL import Image
 
 from src.utils.market_visualizer import MarketVisualizer
@@ -29,12 +28,36 @@ def sample_price_history():
 def sample_price_history_with_volume():
     """Sample price history data with volume for testing."""
     return [
-        {"price": 10.0, "timestamp": (datetime.now() - timedelta(days=6)).timestamp(), "volume": 50},
-        {"price": 10.5, "timestamp": (datetime.now() - timedelta(days=5)).timestamp(), "volume": 45},
-        {"price": 11.2, "timestamp": (datetime.now() - timedelta(days=4)).timestamp(), "volume": 60},
-        {"price": 11.8, "timestamp": (datetime.now() - timedelta(days=3)).timestamp(), "volume": 70},
-        {"price": 11.5, "timestamp": (datetime.now() - timedelta(days=2)).timestamp(), "volume": 55},
-        {"price": 12.0, "timestamp": (datetime.now() - timedelta(days=1)).timestamp(), "volume": 65},
+        {
+            "price": 10.0,
+            "timestamp": (datetime.now() - timedelta(days=6)).timestamp(),
+            "volume": 50,
+        },
+        {
+            "price": 10.5,
+            "timestamp": (datetime.now() - timedelta(days=5)).timestamp(),
+            "volume": 45,
+        },
+        {
+            "price": 11.2,
+            "timestamp": (datetime.now() - timedelta(days=4)).timestamp(),
+            "volume": 60,
+        },
+        {
+            "price": 11.8,
+            "timestamp": (datetime.now() - timedelta(days=3)).timestamp(),
+            "volume": 70,
+        },
+        {
+            "price": 11.5,
+            "timestamp": (datetime.now() - timedelta(days=2)).timestamp(),
+            "volume": 55,
+        },
+        {
+            "price": 12.0,
+            "timestamp": (datetime.now() - timedelta(days=1)).timestamp(),
+            "volume": 65,
+        },
         {"price": 12.5, "timestamp": datetime.now().timestamp(), "volume": 80},
     ]
 
@@ -52,7 +75,7 @@ def sample_items_data():
             "itemId": "item2",
             "title": "M4A4 | Asiimov",
             "price": {"amount": 2500},  # $25.00
-        }
+        },
     ]
 
 
@@ -60,7 +83,7 @@ def sample_items_data():
 def sample_price_histories():
     """Sample price histories for multiple items."""
     now = datetime.now()
-    
+
     # Item 1 with upward trend
     item1_history = [
         {"price": 10.0, "timestamp": (now - timedelta(days=6)).timestamp()},
@@ -71,7 +94,7 @@ def sample_price_histories():
         {"price": 12.3, "timestamp": (now - timedelta(days=1)).timestamp()},
         {"price": 12.5, "timestamp": now.timestamp()},
     ]
-    
+
     # Item 2 with downward trend
     item2_history = [
         {"price": 30.0, "timestamp": (now - timedelta(days=6)).timestamp()},
@@ -82,10 +105,10 @@ def sample_price_histories():
         {"price": 26.0, "timestamp": (now - timedelta(days=1)).timestamp()},
         {"price": 25.0, "timestamp": now.timestamp()},
     ]
-    
+
     return {
         "item1": item1_history,
-        "item2": item2_history
+        "item2": item2_history,
     }
 
 
@@ -93,7 +116,7 @@ def sample_price_histories():
 def sample_pattern_history():
     """Sample price history with detectable patterns."""
     now = datetime.now()
-    
+
     # Create a price history with a breakout pattern
     return [
         {"price": 10.0, "timestamp": (now - timedelta(days=12)).timestamp()},
@@ -119,13 +142,13 @@ def sample_patterns():
         {
             "type": "breakout",
             "confidence": 0.85,
-            "description": "Price breaking out of previous range"
+            "description": "Price breaking out of previous range",
         },
         {
             "type": "fomo",
             "confidence": 0.75,
-            "description": "Rapid price increase detected (FOMO)"
-        }
+            "description": "Rapid price increase detected (FOMO)",
+        },
     ]
 
 
@@ -140,8 +163,8 @@ def sample_item_data():
         "extra": {
             "categoryPath": "Rifle",
             "rarity": "Classified",
-            "exterior": "Field-Tested"
-        }
+            "exterior": "Field-Tested",
+        },
     }
 
 
@@ -155,7 +178,7 @@ def sample_analysis_data():
         "volatility_ratio": 0.03,
         "patterns": [
             {"type": "breakout", "confidence": 0.85},
-            {"type": "fomo", "confidence": 0.75}
+            {"type": "fomo", "confidence": 0.75},
         ],
         "support_level": 11.0,
         "resistance_level": 13.0,
@@ -167,7 +190,7 @@ def sample_analysis_data():
         "price_change_24h": 12.5,
         "price_change_7d": 25.0,
         "volume_change": 15.0,
-        "insufficient_data": False
+        "insufficient_data": False,
     }
 
 
@@ -181,7 +204,7 @@ class TestMarketVisualizer:
         visualizer = MarketVisualizer()
         assert visualizer.theme == "dark"
         assert visualizer.text_color == "white"
-        
+
         # Test light theme
         visualizer = MarketVisualizer(theme="light")
         assert visualizer.theme == "light"
@@ -193,7 +216,7 @@ class TestMarketVisualizer:
         visualizer = MarketVisualizer(theme="dark")
         assert visualizer.up_color == "#00ff9f"  # Green for dark theme
         assert visualizer.down_color == "#ff5757"  # Red for dark theme
-        
+
         # Test light theme
         visualizer = MarketVisualizer(theme="light")
         assert visualizer.up_color == "#00aa5e"  # Green for light theme
@@ -202,113 +225,121 @@ class TestMarketVisualizer:
     async def test_create_price_chart_empty(self):
         """Test creating a chart with empty data."""
         visualizer = MarketVisualizer()
-        
+
         # Test with empty data
         result = await visualizer.create_price_chart(
             price_history=[],
             item_name="Test Item",
             game="csgo",
             width=800,
-            height=600
+            height=600,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         # Verify it's a valid image by opening it
         img = Image.open(result)
         assert img.width > 0
         assert img.height > 0
 
-    @patch('matplotlib.pyplot.savefig')
+    @patch("matplotlib.pyplot.savefig")
     async def test_create_price_chart(self, mock_savefig, sample_price_history):
         """Test creating a price chart."""
         visualizer = MarketVisualizer()
-        
+
         result = await visualizer.create_price_chart(
             price_history=sample_price_history,
             item_name="AK-47 | Redline",
             game="csgo",
             width=800,
-            height=600
+            height=600,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         mock_savefig.assert_called_once()
 
-    @patch('matplotlib.pyplot.savefig')
-    async def test_create_price_chart_with_volume(self, mock_savefig, sample_price_history_with_volume):
+    @patch("matplotlib.pyplot.savefig")
+    async def test_create_price_chart_with_volume(
+        self, mock_savefig, sample_price_history_with_volume
+    ):
         """Test creating a price chart with volume data."""
         visualizer = MarketVisualizer()
-        
+
         result = await visualizer.create_price_chart(
             price_history=sample_price_history_with_volume,
             item_name="AK-47 | Redline",
             game="csgo",
             include_volume=True,
             width=800,
-            height=600
+            height=600,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         mock_savefig.assert_called_once()
 
-    @patch('matplotlib.pyplot.savefig')
-    async def test_create_market_comparison_chart(self, mock_savefig, sample_items_data, sample_price_histories):
+    @patch("matplotlib.pyplot.savefig")
+    async def test_create_market_comparison_chart(
+        self, mock_savefig, sample_items_data, sample_price_histories
+    ):
         """Test creating a market comparison chart."""
         visualizer = MarketVisualizer()
-        
+
         result = await visualizer.create_market_comparison_chart(
             items_data=sample_items_data,
             price_histories=sample_price_histories,
             width=800,
-            height=600
+            height=600,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         mock_savefig.assert_called_once()
 
-    @patch('matplotlib.pyplot.savefig')
-    async def test_create_pattern_visualization(self, mock_savefig, sample_pattern_history, sample_patterns):
+    @patch("matplotlib.pyplot.savefig")
+    async def test_create_pattern_visualization(
+        self, mock_savefig, sample_pattern_history, sample_patterns
+    ):
         """Test creating a pattern visualization chart."""
         visualizer = MarketVisualizer()
-        
+
         result = await visualizer.create_pattern_visualization(
             price_history=sample_pattern_history,
             patterns=sample_patterns,
             item_name="AK-47 | Redline",
             width=800,
-            height=500
+            height=500,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         mock_savefig.assert_called_once()
 
-    @patch('PIL.Image.new')
-    @patch('PIL.Image.save')
-    async def test_create_market_summary_image(self, mock_save, mock_new, sample_item_data, sample_analysis_data):
+    @patch("PIL.Image.new")
+    @patch("PIL.Image.save")
+    async def test_create_market_summary_image(
+        self, mock_save, mock_new, sample_item_data, sample_analysis_data
+    ):
         """Test creating a market summary image."""
         visualizer = MarketVisualizer()
-        
+
         # Mock Image.new to return a mock image
         mock_img = MagicMock()
         mock_img.save = MagicMock()
         mock_new.return_value = mock_img
-        
+
         result = await visualizer.create_market_summary_image(
             item_data=sample_item_data,
             analysis=sample_analysis_data,
             width=800,
-            height=400
+            height=400,
         )
-        
+
         assert isinstance(result, io.BytesIO)
         mock_new.assert_called_once()
 
     def test_process_price_data(self, sample_price_history_with_volume):
         """Test processing price data into a DataFrame."""
         visualizer = MarketVisualizer()
-        
+
         df = visualizer.process_price_data(sample_price_history_with_volume)
-        
+
         assert len(df) == 7
         assert "price" in df.columns
         assert "volume" in df.columns
@@ -318,49 +349,54 @@ class TestMarketVisualizer:
     def test_color_trend_regions(self):
         """Test coloring trend regions on a chart."""
         visualizer = MarketVisualizer()
-        
+
         # Create a test DataFrame
         import pandas as pd
-        from matplotlib.patches import Rectangle
-        
+
         dates = [datetime.now() - timedelta(days=x) for x in range(5, 0, -1)]
-        df = pd.DataFrame({
-            "price": [10.0, 10.5, 11.0, 11.5, 12.0],
-            "sma": [10.0, 10.5, 11.0, 11.5, 12.0]  # Pre-calculated SMA for testing
-        }, index=dates)
-        
+        df = pd.DataFrame(
+            {
+                "price": [10.0, 10.5, 11.0, 11.5, 12.0],
+                "sma": [10.0, 10.5, 11.0, 11.5, 12.0],  # Pre-calculated SMA for testing
+            },
+            index=dates,
+        )
+
         # Mock axis
         ax = MagicMock()
         ax.add_patch = MagicMock()
-        
+
         # Execute method
         visualizer.color_trend_regions(ax, df)
-        
+
         # Verify at least one patch was added for trend regions
         assert ax.add_patch.called
 
     def test_add_support_resistance(self):
         """Test adding support and resistance lines to a chart."""
         visualizer = MarketVisualizer()
-        
+
         # Create a test DataFrame with local min/max points
         import pandas as pd
-        
+
         dates = [datetime.now() - timedelta(days=x) for x in range(10, 0, -1)]
         prices = [10.0, 10.5, 10.0, 11.0, 10.5, 10.0, 10.5, 11.0, 10.5, 10.0]
-        df = pd.DataFrame({
-            "price": prices,
-            # Pre-calculate min/max for the test
-            "min": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
-            "max": [11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0]
-        }, index=dates)
-        
+        df = pd.DataFrame(
+            {
+                "price": prices,
+                # Pre-calculate min/max for the test
+                "min": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                "max": [11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0],
+            },
+            index=dates,
+        )
+
         # Mock axis
         ax = MagicMock()
         ax.axhline = MagicMock()
-        
+
         # Execute method
         visualizer.add_support_resistance(ax, df)
-        
+
         # Verify axhline was called to add lines
-        assert ax.axhline.called 
+        assert ax.axhline.called

@@ -93,7 +93,8 @@ async def test_get_sales_history_large_batches_with_error(mock_api_client):
 
 @pytest.mark.asyncio
 async def test_get_sales_history_execute_api_request(
-    mock_execute_api_request, mock_api_client
+    mock_execute_api_request,
+    mock_api_client,
 ):
     """Проверяет, что функция execute_api_request вызывается с правильными параметрами."""
     # Настраиваем мок для возврата данных
@@ -117,7 +118,8 @@ async def test_get_sales_history_execute_api_request(
 
 @pytest.mark.asyncio
 async def test_analyze_sales_history_price_trend_calculation(
-    mock_api_client, mock_current_time
+    mock_api_client,
+    mock_current_time,
 ):
     """Проверяет корректный расчет тренда цены в разных сценариях."""
     with patch("src.dmarket.sales_history.get_sales_history") as mock_get_sales_history:
@@ -252,7 +254,8 @@ async def test_analyze_sales_history_price_trend_calculation(
 
 @pytest.mark.asyncio
 async def test_analyze_sales_history_different_price_formats(
-    mock_api_client, mock_current_time
+    mock_api_client,
+    mock_current_time,
 ):
     """Проверяет обработку различных форматов цен в истории продаж."""
     with patch("src.dmarket.sales_history.get_sales_history") as mock_get_sales_history:
@@ -298,7 +301,8 @@ async def test_analyze_sales_history_different_price_formats(
 
 @pytest.mark.asyncio
 async def test_analyze_sales_history_sale_format_from_api(
-    mock_api_client, mock_current_time
+    mock_api_client,
+    mock_current_time,
 ):
     """Проверяет обработку формата данных из реального API DMarket."""
     with patch("src.dmarket.sales_history.get_sales_history") as mock_get_sales_history:
@@ -331,7 +335,8 @@ async def test_analyze_sales_history_sale_format_from_api(
         mock_get_sales_history.return_value = api_format_data
 
         result = await analyze_sales_history(
-            "AK-47 | Redline", api_client=mock_api_client
+            "AK-47 | Redline",
+            api_client=mock_api_client,
         )
 
         assert result["has_data"] == True

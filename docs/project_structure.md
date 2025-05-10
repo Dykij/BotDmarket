@@ -1,20 +1,69 @@
-# Структура проекта DMarket Tools
+# Структура проекта DMarket Bot
 
-В этом документе описана структура проекта DMarket Tools, роль каждой директории и основные компоненты системы.
+В этом документе описана структура проекта DMarket Bot, роль каждой директории и основные компоненты системы.
 
 ## Общая структура
 
 ```
-dmarket-tools/
-├── src/                   # Основной код проекта
-│   ├── dmarket/           # API клиент и логика работы с DMarket
-│   ├── telegram_bot/      # Реализация Telegram-бота
-│   └── utils/             # Вспомогательные модули и утилиты
-├── tests/                 # Тесты
-├── scripts/               # Примеры и утилиты
-├── docs/                  # Документация
-├── config/                # Конфигурационные файлы (устаревшие)
-└── .env                   # Файл с переменными окружения (создать вручную)
+BotDmarket/
+├── config/                  # Конфигурационные файлы
+│   ├── mypy.ini
+│   ├── pyproject.toml
+│   └── pyrightconfig.json
+├── docs/                    # Документация
+│   └── project_structure.md
+├── logs/                    # Логи приложения
+├── scripts/                 # Скрипты для запуска и управления
+│   ├── run_bot.py
+│   └── ...
+├── src/                     # Исходный код
+│   ├── dmarket/             # Модули для работы с DMarket API
+│   │   ├── api/             # API-клиенты
+│   │   │   ├── client.py
+│   │   │   └── ...
+│   │   ├── models/          # Модели данных
+│   │   │   ├── market_models.py
+│   │   │   └── ...
+│   │   ├── filters/         # Фильтры для игр
+│   │   │   ├── game_filters.py
+│   │   │   └── ...
+│   │   └── ...
+│   ├── telegram_bot/        # Модули для Telegram бота
+│   │   ├── commands/        # Команды бота
+│   │   │   ├── basic_commands.py
+│   │   │   └── ...
+│   │   ├── handlers/        # Обработчики команд и сообщений
+│   │   │   ├── dmarket_handlers.py
+│   │   │   └── ...
+│   │   └── ...
+│   └── utils/               # Утилиты
+│       ├── logging_utils.py
+│       ├── error_handling.py
+│       └── ...
+└── tests/                   # Тесты
+    ├── dmarket/             # Тесты для модулей DMarket
+    ├── telegram_bot/        # Тесты для Telegram бота
+    └── utils/               # Тесты для утилит
+```
+
+## Запуск приложения
+
+Для запуска бота используйте скрипт:
+
+```bash
+python scripts/run_bot.py
+```
+
+Для тестирования используйте команду:
+
+```bash
+pytest
+```
+
+Для запуска с покрытием:
+
+```bash
+pytest --cov=src --cov-report=html
 ```
 
 ## Основные компоненты
@@ -22,13 +71,16 @@ dmarket-tools/
 ### src/ - Исходный код
 
 #### src/dmarket/
-- **dmarket_api.py** - Клиент для работы с DMarket API, включая генерацию подписей
+- **api/client.py** - Клиент для работы с DMarket API, включая генерацию подписей
+- **models/market_models.py** - Модели данных для работы с API DMarket
+- **filters/game_filters.py** - Фильтры для различных игр (CS:GO, Dota 2, Rust и т.д.)
 - **arbitrage.py** - Логика для поиска арбитражных ситуаций
-- **dmarket_api_patch.py** - Патч для расширения функциональности API клиента
-- **game_filters.py** - Фильтры для различных игр (CS:GO, Dota 2, и т.д.)
+- **sales_history.py** - Работа с историей продаж
+- **market_analysis.py** - Анализ рынка и выявление тенденций
 
 #### src/telegram_bot/
-- **bot.py** - Базовая версия Telegram-бота
+- **commands/basic_commands.py** - Базовые команды для Telegram-бота
+- **handlers/dmarket_handlers.py** - Обработчики команд, связанных с DMarket
 - **bot_v2.py** - Расширенная версия бота с поддержкой арбитража
 - **keyboards.py** - Генераторы клавиатур для Telegram-бота
 - **auto_arbitrage.py** - Автоматический арбитраж через Telegram-бота

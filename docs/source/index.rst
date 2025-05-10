@@ -1,45 +1,46 @@
 .. DMarket Bot documentation master file
 
-====================================
-Документация проекта DMarket Bot
-====================================
+DMarket Bot Documentation
+========================
 
-.. image:: _static/dmarket_logo.png
-   :alt: DMarket Logo
-   :align: center
-   :width: 150px
-
-**DMarket Bot** - это Telegram-бот для автоматического арбитража на платформе DMarket.
-
-Бот позволяет анализировать рынок, находить возможности для арбитража и автоматически
-выполнять операции купли-продажи для получения прибыли.
-
-Содержание
-==========
+DMarket Bot - это Telegram-бот для торговли игровыми предметами на платформе DMarket.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Руководство пользователя
+   :caption: Пользовательская документация
 
    user/installation
-   user/quickstart
    user/configuration
+   user/usage
+   user/troubleshooting
 
 .. toctree::
    :maxdepth: 2
-   :caption: Компоненты системы
-   
-   modules/dmarket/index
+   :caption: Руководство разработчика
+
+   dev/architecture
+   dev/codebase
+   dev/api
+   dev/testing
+   dev/deployment
+   dev/contributing
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API и модули
+
    modules/telegram_bot/index
+   modules/dmarket/index
    modules/utils/index
 
 .. toctree::
    :maxdepth: 1
-   :caption: Разработка
-   
-   dev/contributing
-   dev/testing
-   dev/deployment
+   :caption: Дополнительно
+
+   refactoring
+   improvements
+   performance
+   changelog
 
 Индексы и таблицы
 ==================

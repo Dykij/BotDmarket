@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-This script shows DMarket API usage examples.
+"""This script shows DMarket API usage examples.
 """
 
 import asyncio
@@ -18,6 +17,7 @@ from dmarket.dmarket_api import DMarketAPI
 # Load environment variables
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -33,7 +33,6 @@ if not PUBLIC_KEY or not SECRET_KEY:
 
 async def main():
     """Run DMarket API examples."""
-
     # Create API client
     api = DMarketAPI(PUBLIC_KEY, SECRET_KEY)
 

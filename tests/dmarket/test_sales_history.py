@@ -119,7 +119,8 @@ async def test_analyze_sales_history_empty_data(mock_api_client):
         mock_get_sales_history.return_value = {"LastSales": [], "Total": 0}
 
         result = await analyze_sales_history(
-            "AK-47 | Redline", api_client=mock_api_client
+            "AK-47 | Redline",
+            api_client=mock_api_client,
         )
 
         assert not result["has_data"]
@@ -141,7 +142,8 @@ async def test_analyze_sales_history_with_error(mock_api_client):
         }
 
         result = await analyze_sales_history(
-            "AK-47 | Redline", api_client=mock_api_client
+            "AK-47 | Redline",
+            api_client=mock_api_client,
         )
 
         assert not result["has_data"]
@@ -205,7 +207,9 @@ async def test_analyze_sales_history_with_data(mock_api_client):
         with patch("src.dmarket.sales_history.analyze_sales_history", patched_analyze):
             # Вызываем функцию анализа с периодом в 7 дней
             result = await analyze_sales_history(
-                "AK-47 | Redline", days=7, api_client=mock_api_client
+                "AK-47 | Redline",
+                days=7,
+                api_client=mock_api_client,
             )
 
             # Проверяем результат

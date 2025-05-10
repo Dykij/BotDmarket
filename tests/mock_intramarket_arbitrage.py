@@ -1,8 +1,8 @@
-"""
-Мок-модуль intramarket_arbitrage для тестирования.
+"""Мок-модуль intramarket_arbitrage для тестирования.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from tests.mock_dmarket_api import DMarketAPI
 
 # Константы для модуля
@@ -17,12 +17,11 @@ async def find_intramarket_opportunities(
     game: str = "csgo",
     limit: int = 10,
     profit_threshold: float = DEFAULT_PROFIT_THRESHOLD,
-    price_min: Optional[float] = None,
-    price_max: Optional[float] = None,
-) -> List[Dict[str, Any]]:
-    """
-    Находит возможности для внутрирыночного арбитража (модельный метод).
-    
+    price_min: float | None = None,
+    price_max: float | None = None,
+) -> list[dict[str, Any]]:
+    """Находит возможности для внутрирыночного арбитража (модельный метод).
+
     Args:
         api_client: Клиент DMarket API
         game: Игра
@@ -30,9 +29,10 @@ async def find_intramarket_opportunities(
         profit_threshold: Порог прибыли
         price_min: Минимальная цена
         price_max: Максимальная цена
-        
+
     Returns:
         List[Dict[str, Any]]: Список возможностей
+
     """
     # Мок-данные для тестирования
     opportunities = [
@@ -45,7 +45,7 @@ async def find_intramarket_opportunities(
             "sales_per_day": 12.5,
             "lowest_float": 0.15,
             "highest_float": 0.35,
-            "game": game
+            "game": game,
         },
         {
             "title": "AWP | Asiimov (Field-Tested)",
@@ -56,20 +56,22 @@ async def find_intramarket_opportunities(
             "sales_per_day": 8.3,
             "lowest_float": 0.18,
             "highest_float": 0.38,
-            "game": game
-        }
+            "game": game,
+        },
     ]
-    
+
     # Фильтрация по порогу прибыли
-    opportunities = [item for item in opportunities if item["profit_percent"] >= profit_threshold * 100]
-    
+    opportunities = [
+        item for item in opportunities if item["profit_percent"] >= profit_threshold * 100
+    ]
+
     # Фильтрация по цене
     if price_min is not None:
         opportunities = [item for item in opportunities if item["buy_price"] >= price_min]
-    
+
     if price_max is not None:
         opportunities = [item for item in opportunities if item["buy_price"] <= price_max]
-    
+
     # Возвращаем с ограничением по limit
     return opportunities[:limit]
 
@@ -78,17 +80,17 @@ async def get_potential_profit(
     api_client: DMarketAPI,
     item_name: str,
     game: str = "csgo",
-) -> Dict[str, Any]:
-    """
-    Получает потенциальную прибыль для предмета (модельный метод).
-    
+) -> dict[str, Any]:
+    """Получает потенциальную прибыль для предмета (модельный метод).
+
     Args:
         api_client: Клиент DMarket API
         item_name: Название предмета
         game: Игра
-        
+
     Returns:
         Dict[str, Any]: Информация о потенциальной прибыли
+
     """
     # Мок-данные для тестирования
     return {
@@ -99,20 +101,20 @@ async def get_potential_profit(
         "profit_percent": 5.0,
         "sales_per_day": 12.5,
         "success_chance": "высокая",
-        "game": game
+        "game": game,
     }
 
 
-def get_sales_history_for_game(game: str, days: int = 7) -> Dict[str, Any]:
-    """
-    Получает историю продаж для игры (модельный метод).
-    
+def get_sales_history_for_game(game: str, days: int = 7) -> dict[str, Any]:
+    """Получает историю продаж для игры (модельный метод).
+
     Args:
         game: Игра
         days: Количество дней
-        
+
     Returns:
         Dict[str, Any]: История продаж
+
     """
     # Мок-данные для тестирования
     return {
@@ -124,14 +126,14 @@ def get_sales_history_for_game(game: str, days: int = 7) -> Dict[str, Any]:
                 "avg_price": 19.75,
                 "min_price": 18.50,
                 "max_price": 22.00,
-                "sales_per_day": 125.0
+                "sales_per_day": 125.0,
             },
             "AWP | Asiimov (Field-Tested)": {
                 "total_sales": 583,
                 "avg_price": 47.25,
                 "min_price": 44.50,
                 "max_price": 51.00,
-                "sales_per_day": 83.3
-            }
-        }
-    } 
+                "sales_per_day": 83.3,
+            },
+        },
+    }

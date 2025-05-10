@@ -1,16 +1,14 @@
-"""
-Демонстрационный скрипт для тестирования фильтров арбитража по играм.
+"""Демонстрационный скрипт для тестирования фильтров арбитража по играм.
 """
 
-import sys
-import os
 import asyncio
+import os
+import sys
 
 # Добавляем корневой каталог проекта в путь импорта
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.telegram_bot.arbitrage_scanner import ArbitrageScanner
-
 
 # Тестовые данные: предметы CS:GO
 CSGO_ITEMS = [
@@ -75,55 +73,57 @@ DOTA2_ITEMS = [
 async def test_filters():
     """Тестирование фильтрации предметов."""
     scanner = ArbitrageScanner()
-    
+
     # Тестируем фильтры CS:GO
     print("=== Тестирование фильтров CS:GO ===")
-    
+
     # Фильтр по float (изношенность)
     filters = {"float_min": 0.0, "float_max": 0.1}
     results = scanner._apply_game_specific_filters(CSGO_ITEMS, "csgo", filters)
     print(f"\nФильтр по float (0.0-0.1): {len(results)} результатов")
     for item in results:
         print(f"  - {item['title']} (float: {item.get('float', 'N/A')})")
-    
+
     # Фильтр по типу предмета
     filters = {"item_type": "knife"}
     results = scanner._apply_game_specific_filters(CSGO_ITEMS, "csgo", filters)
     print(f"\nФильтр по типу (knife): {len(results)} результатов")
     for item in results:
         print(f"  - {item['title']}")
-    
+
     # Фильтр по StatTrak
     filters = {"stattrak": True}
     results = scanner._apply_game_specific_filters(CSGO_ITEMS, "csgo", filters)
     print(f"\nФильтр по StatTrak: {len(results)} результатов")
     for item in results:
         print(f"  - {item['title']}")
-    
+
     # Тестируем фильтры Dota 2
     print("\n=== Тестирование фильтров Dota 2 ===")
-    
+
     # Фильтр по редкости
     filters = {"rarity": "Arcana"}
     results = scanner._apply_game_specific_filters(DOTA2_ITEMS, "dota2", filters)
     print(f"\nФильтр по редкости (Arcana): {len(results)} результатов")
     for item in results:
         print(f"  - {item['title']}")
-    
+
     # Фильтр по герою
     filters = {"hero": "zeus"}
     results = scanner._apply_game_specific_filters(DOTA2_ITEMS, "dota2", filters)
     print(f"\nФильтр по герою (Zeus): {len(results)} результатов")
     for item in results:
         print(f"  - {item['title']}")
-        
+
     # Комбинированные фильтры
     print("\n=== Тестирование комбинированных фильтров ===")
     filters = {"rarity": "Covert", "float_min": 0.0, "float_max": 0.1}
     results = scanner._apply_game_specific_filters(CSGO_ITEMS, "csgo", filters)
     print(f"\nФильтр по редкости (Covert) и float (0.0-0.1): {len(results)} результатов")
     for item in results:
-        print(f"  - {item['title']} (float: {item.get('float', 'N/A')}, rarity: {item.get('rarity', 'N/A')})")
+        print(
+            f"  - {item['title']} (float: {item.get('float', 'N/A')}, rarity: {item.get('rarity', 'N/A')})"
+        )
 
 
 if __name__ == "__main__":

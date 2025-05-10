@@ -1,0 +1,64 @@
+{
+  "user_preferences": {
+    "123456789": {
+      "chat_id": 123456789,
+      "enabled": false,
+      "channels": [
+        "telegram"
+      ],
+      "frequency": "low",
+      "quiet_hours": {
+        "start": 23,
+        "end": 8
+      },
+      "min_opportunity_score": 60,
+      "notifications": {
+        "market_opportunity": true,
+        "price_alert": true,
+        "trend_alert": true,
+        "pattern_alert": true,
+        "watchlist_update": true,
+        "arbitrage_opportunity": true,
+        "system_alert": true
+      },
+      "games": {
+        "csgo": true,
+        "dota2": false,
+        "tf2": true,
+        "rust": true
+      },
+      "preferences": {
+        "min_price": 1.0,
+        "max_price": 1000.0,
+        "min_profit": 5.0,
+        "notification_style": "detailed"
+      },
+      "last_notification": {
+        "market_opportunity:item-123": 1746696575.5033665
+      },
+      "registered_at": 1746696575.141179
+    }
+  },
+  "active_alerts": {
+    "123456789": [
+      {
+        "id": "test-alert-id",
+        "user_id": "123456789",
+        "type": "price_alert",
+        "item_id": "item-123",
+        "item_name": "AK-47 | Redline",
+        "game": "csgo",
+        "conditions": {
+          "price": 10.0,
+          "direction": "below"
+        },
+        "one_time": false,
+        "created_at": 1746696575.30388,
+        "last_triggered": null,
+        "trigger_count": 0,
+        "active": false
+      }
+    ]
+  },
+  "updated_at": 1746696575.504057
+}

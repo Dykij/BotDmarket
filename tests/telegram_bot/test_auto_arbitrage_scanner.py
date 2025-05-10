@@ -80,7 +80,8 @@ async def test_scan_game_for_arbitrage_success(mock_rate_limiter, mock_dmarket_a
 @pytest.mark.asyncio
 @patch("src.telegram_bot.auto_arbitrage_scanner.rate_limiter")
 async def test_scan_game_for_arbitrage_different_modes(
-    mock_rate_limiter, mock_dmarket_api
+    mock_rate_limiter,
+    mock_dmarket_api,
 ):
     """Тестирует сканирование игры с разными режимами."""
     # Настройка мока rate_limiter
@@ -123,9 +124,7 @@ async def test_scan_game_for_arbitrage_different_modes(
 
             # Фильтруем мок-итемы по диапазону прибыли для проверки
             filtered_items = [
-                item
-                for item in mock_items
-                if min_profit <= item["profit"] <= max_profit
+                item for item in mock_items if min_profit <= item["profit"] <= max_profit
             ]
 
             # Проверяем, что количество результатов соответствует ожидаемому
@@ -135,7 +134,8 @@ async def test_scan_game_for_arbitrage_different_modes(
 @pytest.mark.asyncio
 @patch("src.telegram_bot.auto_arbitrage_scanner.rate_limiter")
 async def test_scan_game_for_arbitrage_error_handling(
-    mock_rate_limiter, mock_dmarket_api
+    mock_rate_limiter,
+    mock_dmarket_api,
 ):
     """Тестирует обработку ошибок при сканировании игры."""
     # Настройка мока rate_limiter
@@ -166,7 +166,9 @@ async def test_scan_game_for_arbitrage_error_handling(
 @patch("src.telegram_bot.auto_arbitrage_scanner.DMarketAPI")
 @patch("src.telegram_bot.auto_arbitrage_scanner.AsyncBatch")
 async def test_scan_multiple_games(
-    mock_async_batch, mock_dmarket_api_class, mock_scan_game
+    mock_async_batch,
+    mock_dmarket_api_class,
+    mock_scan_game,
 ):
     """Тестирует сканирование нескольких игр."""
     # Настройка мока для DMarketAPI
@@ -197,7 +199,8 @@ async def test_scan_multiple_games(
 
     # Проверяем, что был создан экземпляр AsyncBatch с правильными параметрами
     mock_async_batch.assert_called_once_with(
-        max_concurrent=3, delay_between_batches=0.2
+        max_concurrent=3,
+        delay_between_batches=0.2,
     )
 
     # Проверяем, что метод execute был вызван
@@ -262,7 +265,8 @@ async def test_check_user_balance_low_funds(mock_dmarket_api):
 @pytest.mark.asyncio
 @patch("src.telegram_bot.auto_arbitrage_scanner.check_user_balance")
 async def test_auto_trade_items_sufficient_balance(
-    mock_check_balance, mock_dmarket_api
+    mock_check_balance,
+    mock_dmarket_api,
 ):
     """Тестирует автоматическую торговлю с достаточным балансом."""
     # Настройка мока для check_user_balance
@@ -326,7 +330,8 @@ async def test_auto_trade_items_sufficient_balance(
 @pytest.mark.asyncio
 @patch("src.telegram_bot.auto_arbitrage_scanner.check_user_balance")
 async def test_auto_trade_items_insufficient_balance(
-    mock_check_balance, mock_dmarket_api
+    mock_check_balance,
+    mock_dmarket_api,
 ):
     """Тестирует автоматическую торговлю с недостаточным балансом."""
     # Настройка мока для check_user_balance

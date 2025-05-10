@@ -1,5 +1,4 @@
-"""
-Демонстрационный скрипт для показа возможностей улучшенного модуля arbitrage.py.
+"""Демонстрационный скрипт для показа возможностей улучшенного модуля arbitrage.py.
 
 Включает примеры асинхронного поиска арбитражных возможностей, работы с классом ArbitrageTrader,
 демонстрацию поиска по разным играм и вывод справочной информации по комиссиям и торговле.
@@ -10,21 +9,20 @@ import os
 import sys
 
 # Добавляем корневой каталог проекта в PYTHONPATH для корректного импорта модулей
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.dmarket.arbitrage import (
+    GAMES,  # Справочник поддерживаемых игр
+    ArbitrageTrader,  # Класс для автоматизации торговли
     arbitrage_boost_async,  # Поиск арбитражных возможностей с низкой прибылью
-    arbitrage_mid_async,    # Поиск арбитражных возможностей со средней прибылью
-    arbitrage_pro_async,    # Поиск арбитражных возможностей с высокой прибылью
-    ArbitrageTrader,        # Класс для автоматизации торговли
+    arbitrage_mid_async,  # Поиск арбитражных возможностей со средней прибылью
+    arbitrage_pro_async,  # Поиск арбитражных возможностей с высокой прибылью
     find_arbitrage_opportunities_async,  # Поиск арбитража по разным играм
-    GAMES                   # Справочник поддерживаемых игр
 )
 
 
 async def demo_improved_arbitrage() -> None:
-    """
-    Демонстрирует основные возможности улучшенного модуля arbitrage.py.
+    """Демонстрирует основные возможности улучшенного модуля arbitrage.py.
 
     - Поиск арбитражных возможностей с разной доходностью
     - Использование класса ArbitrageTrader для поиска и анализа
@@ -44,12 +42,14 @@ async def demo_improved_arbitrage() -> None:
         print(f"Найдено {len(boost_items)} предметов:")
         # Показываем только первые 3 предмета для краткости
         for i, item in enumerate(boost_items[:3]):
-            print(f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
-                  f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}")
+            print(
+                f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
+                f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}"
+            )
         if len(boost_items) > 3:
             print(f"  ... и еще {len(boost_items) - 3} предметов")
     except Exception as e:
-        print(f"Ошибка: {str(e)}")
+        print(f"Ошибка: {e!s}")
 
     # --- Поиск возможностей со средней прибылью ---
     print("\n2. Поиск арбитражных возможностей со средней прибылью (mid)")
@@ -60,12 +60,14 @@ async def demo_improved_arbitrage() -> None:
         print(f"Найдено {len(mid_items)} предметов:")
         # Показываем только первые 3
         for i, item in enumerate(mid_items[:3]):
-            print(f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
-                  f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}")
+            print(
+                f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
+                f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}"
+            )
         if len(mid_items) > 3:
             print(f"  ... и еще {len(mid_items) - 3} предметов")
     except Exception as e:
-        print(f"Ошибка: {str(e)}")
+        print(f"Ошибка: {e!s}")
 
     # --- Поиск возможностей с высокой прибылью ---
     print("\n3. Поиск арбитражных возможностей с высокой прибылью (pro)")
@@ -76,12 +78,14 @@ async def demo_improved_arbitrage() -> None:
         print(f"Найдено {len(pro_items)} предметов:")
         # Показываем только первые 3
         for i, item in enumerate(pro_items[:3]):
-            print(f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
-                  f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}")
+            print(
+                f"  {i+1}. {item.get('name')} - Покупка: {item.get('buy')}, "
+                f"Продажа: {item.get('sell')}, Прибыль: {item.get('profit')}"
+            )
         if len(pro_items) > 3:
             print(f"  ... и еще {len(pro_items) - 3} предметов")
     except Exception as e:
-        print(f"Ошибка: {str(e)}")
+        print(f"Ошибка: {e!s}")
 
     # --- Использование класса ArbitrageTrader ---
     print("\n4. Использование класса ArbitrageTrader")
@@ -89,9 +93,9 @@ async def demo_improved_arbitrage() -> None:
 
     try:
         # Создаем трейдер
-        trader = ArbitrageTrader()        # Проверяем баланс
+        trader = ArbitrageTrader()  # Проверяем баланс
         has_funds, balance = await trader.check_balance()
-        status_text = 'Достаточно средств' if has_funds else 'Недостаточно средств'
+        status_text = "Достаточно средств" if has_funds else "Недостаточно средств"
         print(f"Баланс: ${balance:.2f} - {status_text}")
 
         # Поиск выгодных предметов
@@ -99,16 +103,18 @@ async def demo_improved_arbitrage() -> None:
         items = await trader.find_profitable_items(
             game="csgo",
             min_profit_percentage=5.0,
-            max_items=5
+            max_items=5,
         )
 
         print(f"Найдено {len(items)} выгодных предметов:")
         for i, item in enumerate(items[:3]):
-            print(f"  {i+1}. {item.get('name')} - "
-                  f"Покупка: ${item.get('buy_price'):.2f}, "
-                  f"Продажа: ${item.get('sell_price'):.2f}, "
-                  f"Прибыль: ${item.get('profit'):.2f} "
-                  f"({item.get('profit_percentage'):.1f}%)")
+            print(
+                f"  {i+1}. {item.get('name')} - "
+                f"Покупка: ${item.get('buy_price'):.2f}, "
+                f"Продажа: ${item.get('sell_price'):.2f}, "
+                f"Прибыль: ${item.get('profit'):.2f} "
+                f"({item.get('profit_percentage'):.1f}%)"
+            )
 
         # Демонстрация настройки лимитов
         print("\nУстановка лимитов торговли:")
@@ -122,7 +128,7 @@ async def demo_improved_arbitrage() -> None:
         print(f"  Дневной лимит: ${status.get('daily_limit'):.2f}")
         print(f"  Всего сделок: {status.get('transactions_count')}")
     except Exception as e:
-        print(f"Ошибка при использовании ArbitrageTrader: {str(e)}")
+        print(f"Ошибка при использовании ArbitrageTrader: {e!s}")
 
     # --- Поиск арбитражных возможностей по разным играм ---
     print("\n5. Поиск арбитражных возможностей по разным играм")
@@ -139,7 +145,7 @@ async def demo_improved_arbitrage() -> None:
             game_opportunities = await find_arbitrage_opportunities_async(
                 min_profit_percentage=10.0,
                 max_results=3,
-                game=game_code
+                game=game_code,
             )
 
             for opp in game_opportunities:
@@ -153,17 +159,19 @@ async def demo_improved_arbitrage() -> None:
         opportunities = sorted(
             opportunities,
             key=lambda x: x.get("profit_percentage", 0),
-            reverse=True
+            reverse=True,
         )
 
         # Выводим топ возможностей
         print("\nЛучшие возможности по всем играм:")
         for i, opp in enumerate(opportunities[:5]):
-            print(f"  {i+1}. {opp.get('item_title')} ({opp.get('game_name')}) - "
-                  f"Прибыль: ${opp.get('profit_amount'):.2f} "
-                  f"({opp.get('profit_percentage'):.1f}%)")
+            print(
+                f"  {i+1}. {opp.get('item_title')} ({opp.get('game_name')}) - "
+                f"Прибыль: ${opp.get('profit_amount'):.2f} "
+                f"({opp.get('profit_percentage'):.1f}%)"
+            )
     except Exception as e:
-        print(f"Ошибка при поиске арбитражных возможностей: {str(e)}")
+        print(f"Ошибка при поиске арбитражных возможностей: {e!s}")
 
     # --- Вывод справочной информации ---
     print("\n6. Информация о комиссиях и торговле")
@@ -184,14 +192,16 @@ if __name__ == "__main__":
     # Загружаем переменные окружения из .env файла, если он существует
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
-        print("dotenv не установлен. Убедитесь, что переменные окружения "
-              "настроены.")    # Проверяем, что указаны ключи API
-    if (not os.environ.get("DMARKET_PUBLIC_KEY") or
-            not os.environ.get("DMARKET_SECRET_KEY")):
-        print("ВНИМАНИЕ: Не указаны переменные окружения DMARKET_PUBLIC_KEY и "
-              "DMARKET_SECRET_KEY")
+        print(
+            "dotenv не установлен. Убедитесь, что переменные окружения " "настроены."
+        )  # Проверяем, что указаны ключи API
+    if not os.environ.get("DMARKET_PUBLIC_KEY") or not os.environ.get("DMARKET_SECRET_KEY"):
+        print(
+            "ВНИМАНИЕ: Не указаны переменные окружения DMARKET_PUBLIC_KEY и " "DMARKET_SECRET_KEY"
+        )
         print("Некоторые функции будут недоступны или вернут пустые результаты.")
 
     # Запускаем демонстрацию

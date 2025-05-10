@@ -8,8 +8,9 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 
 from src.dmarket.arbitrage import GAMES
 from src.telegram_bot.enhanced_auto_arbitrage import start_auto_arbitrage_enhanced
-from src.telegram_bot.keyboards import get_arbitrage_keyboard
-from src.telegram_bot.pagination import format_paginated_results, pagination_manager
+from src.telegram_bot.keyboards import get_arbitrage_keyboard, create_pagination_keyboard
+from src.telegram_bot.pagination import pagination_manager
+from src.telegram_bot.utils.formatters import format_opportunities
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -55,26 +56,32 @@ async def handle_enhanced_arbitrage_command(update: Update, context: CallbackCon
         keyboard.append(game_row)
 
     # Add mode selection buttons
-    keyboard.append([
-        InlineKeyboardButton("🟢 Low Risk", callback_data="enhanced_mode:low"),
-        InlineKeyboardButton("🟡 Medium Risk", callback_data="enhanced_mode:medium"),
-    ])
-    keyboard.append([
-        InlineKeyboardButton("🔴 High Risk", callback_data="enhanced_mode:high"),
-    ])
+    keyboard.append(
+        [
+            InlineKeyboardButton("🟢 Low Risk", callback_data="enhanced_mode:low"),
+            InlineKeyboardButton("🟡 Medium Risk", callback_data="enhanced_mode:medium"),
+        ]
+    )
+    keyboard.append(
+        [
+            InlineKeyboardButton("🔴 High Risk", callback_data="enhanced_mode:high"),
+        ]
+    )
 
     # Add scan button
-    keyboard.append([
-        InlineKeyboardButton("🔍 Start Enhanced Scan", callback_data="enhanced_start"),
-    ])
+    keyboard.append(
+        [
+            InlineKeyboardButton("🔍 Start Enhanced Scan", callback_data="enhanced_start"),
+        ]
+    )
 
     # Send the message
     await update.message.reply_text(
         text="🚀 *Enhanced Auto-Arbitrage*\n\n"
-             "Select the games you want to scan and the risk level, "
-             "then press Start Enhanced Scan.\n\n"
-             "💡 *Note:* Enhanced scanning performs comprehensive market analysis "
-             "with improved rate limiting and pagination.",
+        "Select the games you want to scan and the risk level, "
+        "then press Start Enhanced Scan.\n\n"
+        "💡 *Note:* Enhanced scanning performs comprehensive market analysis "
+        "with improved rate limiting and pagination.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -83,7 +90,7 @@ async def handle_enhanced_arbitrage_command(update: Update, context: CallbackCon
     if not context.user_data.get("enhanced_arbitrage"):
         context.user_data["enhanced_arbitrage"] = {
             "games": ["csgo"],  # Default to CS2
-            "mode": "medium",   # Default to medium risk
+            "mode": "medium",  # Default to medium risk
             "status": "configuring",
         }
 
@@ -103,7 +110,7 @@ async def handle_enhanced_arbitrage_callback(update: Update, context: CallbackCo
     if not context.user_data.get("enhanced_arbitrage"):
         context.user_data["enhanced_arbitrage"] = {
             "games": ["csgo"],  # Default to CS2
-            "mode": "medium",   # Default to medium risk
+            "mode": "medium",  # Default to medium risk
             "status": "configuring",
         }
 
@@ -212,90 +219,122 @@ async def handle_enhanced_arbitrage_callback(update: Update, context: CallbackCo
 
             # Store results for pagination
             if results:
+                # Используем унифицированный менеджер пагинации
                 pagination_manager.add_items_for_user(user_id, results, f"enhanced_{mode}")
-                page_items, current_page, total_pages = pagination_manager.get_page(user_id)
+                items, current_page, total_pages = pagination_manager.get_page(user_id)
 
-                # Format results for display
-                formatted_text = format_paginated_results(
-                    page_items,
-                    ",".join(games),
-                    f"enhanced_{mode}",
-                    current_page,
-                    total_pages,
+                # Форматируем результаты, используя унифицированный форматтер
+                formatted_text = format_opportunities(
+                    items, 
+                    current_page, 
+                    pagination_manager.get_items_per_page(user_id)
                 )
 
-                # Create pagination keyboard if needed
-                keyboard = []
-                if total_pages > 1:
-                    pagination_row = []
-                    if current_page > 0:
-                        pagination_row.append(
-                            InlineKeyboardButton(
-                                "⬅️ Previous",
-                                callback_data=f"paginate:prev:enhanced_{mode}",
-                            ),
-                        )
-                    if current_page < total_pages - 1:
-                        pagination_row.append(
-                            InlineKeyboardButton(
-                                "Next ➡️",
-                                callback_data=f"paginate:next:enhanced_{mode}",
-                            ),
-                        )
-                    if pagination_row:
-                        keyboard.append(pagination_row)
+                # Создаем клавиатуру пагинации, используя унифицированную функцию
+                pagination_keyboard = create_pagination_keyboard(
+                    current_page=current_page,
+                    total_pages=total_pages,
+                    prefix=f"enhanced_{mode}_",
+                    with_nums=True,
+                    back_button=True,
+                    back_text="« Back to Arbitrage",
+                    back_callback="arbitrage"
+                )
 
-                # Add main arbitrage keyboard
-                arbitrage_keyboard = get_arbitrage_keyboard().inline_keyboard
-                keyboard.extend(arbitrage_keyboard)
-
-                # Show results
+                # Отображаем результаты с унифицированной клавиатурой
                 await query.edit_message_text(
-                    text=formatted_text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="HTML",
+                    text=f"🔍 *Enhanced Arbitrage Results*\n\n{formatted_text}",
+                    reply_markup=pagination_keyboard,
+                    parse_mode="Markdown",
                 )
             else:
-                # No results
                 await query.edit_message_text(
-                    text="No arbitrage opportunities found with the current settings.",
-                    reply_markup=get_arbitrage_keyboard(),
-                    parse_mode="HTML",
+                    "No arbitrage opportunities found. Try adjusting your scan parameters.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("Try Again", callback_data="enhanced_arbitrage")],
+                        [InlineKeyboardButton("« Back to Arbitrage", callback_data="arbitrage")],
+                    ]),
                 )
 
         except asyncio.TimeoutError:
             await query.edit_message_text(
-                "Enhanced scan timed out. Please try again with fewer games or a different mode.",
+                "⚠️ Enhanced scan timed out. Please try again with fewer games or a different mode.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Try Again", callback_data="enhanced_arbitrage")],
+                    [InlineKeyboardButton("« Back to Arbitrage", callback_data="arbitrage")],
+                ]),
             )
         except Exception as e:
-            logger.error(f"Error in enhanced arbitrage: {e}")
+            logger.error(f"Error in enhanced arbitrage scan: {e}")
             await query.edit_message_text(
-                f"An error occurred during the scan: {e!s}",
+                f"❌ Error during enhanced scan: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Try Again", callback_data="enhanced_arbitrage")],
+                    [InlineKeyboardButton("« Back to Arbitrage", callback_data="arbitrage")],
+                ]),
             )
         finally:
-            # Mark scan as complete
             active_scans[user_id] = False
-            enhanced_data["status"] = "complete"
+            enhanced_data["status"] = "completed"
+
+    # Handle pagination for enhanced arbitrage results
+    elif command == "paginate":
+        direction = param
+        mode = parts[2] if len(parts) > 2 else "enhanced"
+
+        # Navigate to requested page
+        if direction == "next":
+            pagination_manager.next_page(user_id)
+        elif direction == "prev":
+            pagination_manager.prev_page(user_id)
+
+        # Get current page data
+        items, current_page, total_pages = pagination_manager.get_page(user_id)
+
+        # Format using the unified formatter
+        formatted_text = format_opportunities(
+            items,
+            current_page,
+            pagination_manager.get_items_per_page(user_id)
+        )
+
+        # Create pagination keyboard using the unified function
+        pagination_keyboard = create_pagination_keyboard(
+            current_page=current_page,
+            total_pages=total_pages,
+            prefix=f"paginate:",
+            with_nums=True,
+            back_button=True,
+            back_text="« Back to Arbitrage",
+            back_callback="arbitrage"
+        )
+
+        # Display results
+        await query.edit_message_text(
+            text=f"🔍 *Enhanced Arbitrage Results*\n\n{formatted_text}",
+            reply_markup=pagination_keyboard,
+            parse_mode="Markdown",
+        )
 
 
 async def update_enhanced_arbitrage_keyboard(query, context: CallbackContext) -> None:
     """Update the enhanced arbitrage keyboard to reflect current selections."""
-    enhanced_data = context.user_data["enhanced_arbitrage"]
-    selected_games = enhanced_data["games"]
-    selected_mode = enhanced_data["mode"]
+    # Get user's current selections
+    enhanced_data = context.user_data.get("enhanced_arbitrage", {})
+    selected_games = enhanced_data.get("games", ["csgo"])
+    selected_mode = enhanced_data.get("mode", "medium")
 
-    # Create keyboard
+    # Create updated keyboard
     keyboard = []
 
-    # Add game buttons
+    # Add game buttons with selection indicators
     game_row = []
     for game_code, game_name in GAMES.items():
-        # Add checkmark to selected games
-        prefix = "✅ " if game_code in selected_games else ""
-
+        # Add checkmark if game is selected
+        button_text = f"✅ {game_name}" if game_code in selected_games else game_name
         game_row.append(
             InlineKeyboardButton(
-                f"{prefix}{game_name}",
+                button_text,
                 callback_data=f"enhanced_scan:{game_code}",
             ),
         )
@@ -308,43 +347,59 @@ async def update_enhanced_arbitrage_keyboard(query, context: CallbackContext) ->
     if game_row:
         keyboard.append(game_row)
 
-    # Add mode selection buttons
-    low_prefix = "✅ " if selected_mode == "low" else ""
-    medium_prefix = "✅ " if selected_mode == "medium" else ""
-    high_prefix = "✅ " if selected_mode == "high" else ""
+    # Add mode selection buttons with indicators
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                f"{'✅ ' if selected_mode == 'low' else ''}🟢 Low Risk",
+                callback_data="enhanced_mode:low",
+            ),
+            InlineKeyboardButton(
+                f"{'✅ ' if selected_mode == 'medium' else ''}🟡 Medium Risk",
+                callback_data="enhanced_mode:medium",
+            ),
+        ]
+    )
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                f"{'✅ ' if selected_mode == 'high' else ''}🔴 High Risk",
+                callback_data="enhanced_mode:high",
+            ),
+        ]
+    )
 
-    keyboard.append([
-        InlineKeyboardButton(f"{low_prefix}🟢 Low Risk", callback_data="enhanced_mode:low"),
-        InlineKeyboardButton(f"{medium_prefix}🟡 Medium Risk", callback_data="enhanced_mode:medium"),
-    ])
-    keyboard.append([
-        InlineKeyboardButton(f"{high_prefix}🔴 High Risk", callback_data="enhanced_mode:high"),
-    ])
+    # Add scan button
+    keyboard.append(
+        [
+            InlineKeyboardButton("🔍 Start Enhanced Scan", callback_data="enhanced_start"),
+        ]
+    )
 
-    # Add scan button with count of selected games
-    keyboard.append([
-        InlineKeyboardButton(
-            f"🔍 Start Enhanced Scan ({len(selected_games)} games, {selected_mode} risk)",
-            callback_data="enhanced_start",
-        ),
-    ])
+    # Back button
+    keyboard.append(
+        [
+            InlineKeyboardButton("« Back to Arbitrage", callback_data="arbitrage"),
+        ]
+    )
 
-    # Update the message
+    # Update the message with the new keyboard
     await query.edit_message_text(
         text="🚀 *Enhanced Auto-Arbitrage*\n\n"
-             "Select the games you want to scan and the risk level, "
-             "then press Start Enhanced Scan.\n\n"
-             "💡 *Note:* Enhanced scanning performs comprehensive market analysis "
-             "with improved rate limiting and pagination.",
+        f"Selected games: {', '.join(GAMES.get(g, g) for g in selected_games)}\n"
+        f"Risk level: {selected_mode.capitalize()}\n\n"
+        "Select the games you want to scan and the risk level, "
+        "then press Start Enhanced Scan.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
 
 
 def register_enhanced_arbitrage_handlers(dispatcher):
-    """Register handlers for enhanced auto-arbitrage functionality."""
+    """Register handlers for enhanced arbitrage functionality."""
     dispatcher.add_handler(CommandHandler("enhanced_arbitrage", handle_enhanced_arbitrage_command))
-    dispatcher.add_handler(CallbackQueryHandler(
-        handle_enhanced_arbitrage_callback,
-        pattern="^(enhanced_scan|enhanced_mode|enhanced_start):.*",
-    ))
+    dispatcher.add_handler(
+        CallbackQueryHandler(handle_enhanced_arbitrage_callback, pattern="^enhanced_")
+    )
+    # We now use the unified pagination handlers, so no need to register a separate one here
+

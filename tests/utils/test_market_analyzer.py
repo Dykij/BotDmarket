@@ -1,24 +1,19 @@
 """Unit tests for the market analyzer module."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import numpy as np
 from datetime import datetime, timedelta
 
+import pytest
+
 from src.utils.market_analyzer import (
+    PATTERN_BREAKOUT,
+    PATTERN_FOMO,
+    PATTERN_PANIC,
+    TREND_DOWN,
+    TREND_STABLE,
+    TREND_UP,
     MarketAnalyzer,
     analyze_market_opportunity,
     batch_analyze_items,
-    TREND_UP,
-    TREND_DOWN,
-    TREND_STABLE,
-    TREND_VOLATILE,
-    PATTERN_BREAKOUT,
-    PATTERN_REVERSAL,
-    PATTERN_FOMO,
-    PATTERN_PANIC,
-    PATTERN_BOTTOMING,
-    PATTERN_TOPPING
 )
 
 
@@ -47,8 +42,8 @@ def sample_item_data():
         "extra": {
             "categoryPath": "Rifle",
             "rarity": "Classified",
-            "exterior": "Field-Tested"
-        }
+            "exterior": "Field-Tested",
+        },
     }
 
 
@@ -93,7 +88,7 @@ class TestMarketAnalyzer:
         """Test analyzing a price history with upward trend."""
         analyzer = MarketAnalyzer()
         result = await analyzer.analyze_price_history(sample_price_history)
-        
+
         assert result["trend"] == TREND_UP
         assert result["confidence"] > 0.5
         assert result["insufficient_data"] is False
@@ -106,7 +101,7 @@ class TestMarketAnalyzer:
         """Test analyzing a price history with downward trend."""
         analyzer = MarketAnalyzer()
         result = await analyzer.analyze_price_history(downtrend_price_history)
-        
+
         assert result["trend"] == TREND_DOWN
         assert result["confidence"] > 0.5
         assert result["price_change_24h"] < 0
@@ -116,7 +111,7 @@ class TestMarketAnalyzer:
         """Test analyzing a price history with volatile pattern."""
         analyzer = MarketAnalyzer()
         result = await analyzer.analyze_price_history(volatile_price_history)
-        
+
         assert result["volatility"] != "low"
         assert result["volatility_ratio"] > 0.05
 
@@ -124,10 +119,12 @@ class TestMarketAnalyzer:
     async def test_analyze_price_history_insufficient_data(self):
         """Test behavior with insufficient data points."""
         analyzer = MarketAnalyzer(min_data_points=10)
-        result = await analyzer.analyze_price_history([
-            {"price": 10.0, "timestamp": datetime.now().timestamp()}
-        ])
-        
+        result = await analyzer.analyze_price_history(
+            [
+                {"price": 10.0, "timestamp": datetime.now().timestamp()},
+            ]
+        )
+
         assert result["insufficient_data"] is True
         assert result["trend"] == TREND_STABLE
         assert result["confidence"] == 0.0
@@ -135,21 +132,21 @@ class TestMarketAnalyzer:
     def test_analyze_trend(self):
         """Test the _analyze_trend method."""
         analyzer = MarketAnalyzer()
-        
+
         # Test upward trend
         trend, confidence = analyzer._analyze_trend([10.0, 10.5, 11.0, 11.5, 12.0])
         assert trend == TREND_UP
         assert confidence > 0.9
-        
+
         # Test downward trend
         trend, confidence = analyzer._analyze_trend([12.0, 11.5, 11.0, 10.5, 10.0])
         assert trend == TREND_DOWN
         assert confidence > 0.9
-        
+
         # Test stable trend
         trend, confidence = analyzer._analyze_trend([10.0, 10.0, 10.0, 10.0, 10.0])
         assert trend == TREND_STABLE
-        
+
         # Test volatile trend
         trend, confidence = analyzer._analyze_trend([10.0, 12.0, 9.0, 11.0, 10.0])
         assert confidence < 0.7
@@ -157,22 +154,20 @@ class TestMarketAnalyzer:
     def test_detect_patterns(self):
         """Test pattern detection."""
         analyzer = MarketAnalyzer()
-        timestamps = [
-            (datetime.now() - timedelta(days=x)).timestamp() for x in range(10, 0, -1)
-        ]
-        
+        timestamps = [(datetime.now() - timedelta(days=x)).timestamp() for x in range(10, 0, -1)]
+
         # Test breakout pattern
         breakout_prices = [10.0, 10.1, 10.2, 10.1, 10.3, 10.2, 10.1, 10.4, 11.0, 12.0]
         patterns = analyzer._detect_patterns(breakout_prices, timestamps)
         pattern_types = [p["type"] for p in patterns]
         assert PATTERN_BREAKOUT in pattern_types
-        
+
         # Test FOMO pattern
         fomo_prices = [10.0, 10.2, 10.5, 10.7, 10.9, 11.0, 11.2, 11.5, 12.0, 14.0]
         patterns = analyzer._detect_patterns(fomo_prices, timestamps)
         pattern_types = [p["type"] for p in patterns]
         assert PATTERN_FOMO in pattern_types
-        
+
         # Test panic pattern
         panic_prices = [10.0, 9.8, 9.5, 9.3, 9.0, 8.8, 8.5, 8.0, 7.5, 6.0]
         patterns = analyzer._detect_patterns(panic_prices, timestamps)
@@ -187,7 +182,7 @@ class TestMarketOpportunity:
     async def test_analyze_market_opportunity_uptrend(self, sample_item_data, sample_price_history):
         """Test market opportunity analysis with upward trend."""
         result = await analyze_market_opportunity(sample_item_data, sample_price_history, "csgo")
-        
+
         assert "opportunity_score" in result
         assert result["opportunity_score"] >= 0
         assert result["opportunity_score"] <= 100
@@ -197,10 +192,12 @@ class TestMarketOpportunity:
         assert result["current_price"] == 12.50
         assert result["game"] == "csgo"
 
-    async def test_analyze_market_opportunity_downtrend(self, sample_item_data, downtrend_price_history):
+    async def test_analyze_market_opportunity_downtrend(
+        self, sample_item_data, downtrend_price_history
+    ):
         """Test market opportunity analysis with downward trend."""
         result = await analyze_market_opportunity(sample_item_data, downtrend_price_history, "csgo")
-        
+
         assert "opportunity_score" in result
         assert "market_analysis" in result
         assert result["market_analysis"]["trend"] == TREND_DOWN
@@ -216,13 +213,13 @@ class TestMarketOpportunity:
             {"price": 14.5, "timestamp": (datetime.now() - timedelta(days=1)).timestamp()},
             {"price": 17.0, "timestamp": datetime.now().timestamp()},
         ]
-        
+
         result = await analyze_market_opportunity(sample_item_data, fomo_history, "csgo")
-        
+
         # Check if FOMO pattern is detected and included in reasons
         pattern_types = [p["type"] for p in result["market_analysis"]["patterns"]]
         assert PATTERN_FOMO in pattern_types
-        
+
         # FOMO should contribute to a high opportunity score for selling
         assert result["opportunity_score"] > 50
         assert any("FOMO" in reason for reason in result["reasons"])
@@ -231,16 +228,16 @@ class TestMarketOpportunity:
         """Test batch analysis of multiple items."""
         items = [sample_item_data, sample_item_data.copy()]
         items[1]["itemId"] = "test-item-456"
-        
+
         price_histories = {
             "test-item-123": sample_price_history,
             "test-item-456": sample_price_history,
         }
-        
+
         results = await batch_analyze_items(items, price_histories, "csgo")
-        
+
         assert len(results) == 2
         assert results[0]["item_id"] == "test-item-123"
         assert results[1]["item_id"] == "test-item-456"
         assert all(isinstance(r["opportunity_score"], (int, float)) for r in results)
-        assert all(isinstance(r["reasons"], list) for r in results) 
+        assert all(isinstance(r["reasons"], list) for r in results)

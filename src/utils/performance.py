@@ -43,7 +43,7 @@ class AdvancedCache:
             self._caches[name] = {}
             self._ttls[name] = ttl if ttl is not None else self._default_ttl
             logger.debug(
-                f"Создано новое хранилище кеша '{name}' с TTL={self._ttls[name]} сек"
+                f"Создано новое хранилище кеша '{name}' с TTL={self._ttls[name]} сек",
             )
 
     def get(self, cache_name: str, key: CacheKey) -> Any | None:
@@ -73,7 +73,7 @@ class AdvancedCache:
         if time.time() - timestamp > ttl:
             # Кеш устарел
             logger.debug(
-                f"Кеш '{cache_name}' для ключа {key} устарел (возраст: {time.time() - timestamp:.1f}с, TTL: {ttl}с)"
+                f"Кеш '{cache_name}' для ключа {key} устарел (возраст: {time.time() - timestamp:.1f}с, TTL: {ttl}с)",
             )
             del cache_storage[key]
             self._misses += 1
@@ -154,7 +154,9 @@ global_cache = AdvancedCache()
 
 
 def cached(
-    cache_name: str, key_function: Callable | None = None, ttl: int | None = None
+    cache_name: str,
+    key_function: Callable | None = None,
+    ttl: int | None = None,
 ):
     """Декоратор для кеширования результатов функций.
 
@@ -246,7 +248,7 @@ def profile_performance(func: Callable) -> Callable:
             finally:
                 execution_time = time.time() - start_time
                 logger.info(
-                    f"Время выполнения {func.__name__}: {execution_time:.4f} сек"
+                    f"Время выполнения {func.__name__}: {execution_time:.4f} сек",
                 )
 
         return async_wrapper

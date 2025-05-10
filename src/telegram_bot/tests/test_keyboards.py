@@ -144,9 +144,7 @@ def test_get_settings_keyboard():
     assert len(keyboard_off.inline_keyboard) == 5
 
     # Проверяем наличие кнопок
-    buttons_text = [
-        button.text for row in keyboard_off.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_off.inline_keyboard for button in row]
     assert "🔑 API ключи" in buttons_text
     assert "🌐 Язык" in buttons_text
     assert "🤖 Авто-торговля: ❌ Выкл." in buttons_text
@@ -155,9 +153,7 @@ def test_get_settings_keyboard():
 
     # Проверка с включенным авто-арбитражем
     keyboard_on = get_settings_keyboard(auto_trading_enabled=True)
-    buttons_text = [
-        button.text for row in keyboard_on.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_on.inline_keyboard for button in row]
     assert "🤖 Авто-торговля: ✅ Вкл." in buttons_text
 
 
@@ -170,9 +166,7 @@ def test_get_language_keyboard():
     assert isinstance(keyboard_ru, InlineKeyboardMarkup)
 
     # Проверяем наличие кнопок для всех языков
-    buttons_text = [
-        button.text for row in keyboard_ru.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_ru.inline_keyboard for button in row]
     assert "🇷🇺 Русский ✅" in buttons_text  # Отмечен текущий язык
     assert "🇬🇧 English" in buttons_text
     assert "🇪🇸 Español" in buttons_text
@@ -181,9 +175,7 @@ def test_get_language_keyboard():
 
     # Проверка с текущим языком - английский
     keyboard_en = get_language_keyboard(current_language="en")
-    buttons_text = [
-        button.text for row in keyboard_en.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_en.inline_keyboard for button in row]
     assert "🇷🇺 Русский" in buttons_text
     assert "🇬🇧 English ✅" in buttons_text  # Отмечен текущий язык
 
@@ -200,9 +192,7 @@ def test_get_risk_profile_keyboard():
     assert len(keyboard_medium.inline_keyboard) == 4
 
     # Проверяем наличие кнопок
-    buttons_text = [
-        button.text for row in keyboard_medium.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_medium.inline_keyboard for button in row]
     assert "🟢 Низкий риск" in buttons_text
     assert "🟡 Средний риск ✅" in buttons_text  # Отмечен текущий профиль
     assert "🔴 Высокий риск" in buttons_text
@@ -210,9 +200,7 @@ def test_get_risk_profile_keyboard():
 
     # Проверка с текущим профилем - высокий
     keyboard_high = get_risk_profile_keyboard(current_profile="high")
-    buttons_text = [
-        button.text for row in keyboard_high.inline_keyboard for button in row
-    ]
+    buttons_text = [button.text for row in keyboard_high.inline_keyboard for button in row]
     assert "🟢 Низкий риск" in buttons_text
     assert "🟡 Средний риск" in buttons_text
     assert "🔴 Высокий риск ✅" in buttons_text  # Отмечен текущий профиль

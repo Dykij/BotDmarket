@@ -1,23 +1,23 @@
-"""
-Модуль для интеграции единого подхода к обработке исключений.
+"""Модуль для интеграции единого подхода к обработке исключений.
 Предоставляет базовые классы исключений и декораторы для их обработки.
 """
 
-from typing import Any, Callable, Dict, Optional, Type, Union, TypeVar, cast
 import functools
 import logging
 import traceback
-import inspect
+from collections.abc import Callable
 from enum import Enum
+from typing import Any, TypeVar, cast
 
 from src.utils.logging_utils import get_logger
 
 # Определение универсального типа для декораторов
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 # Общие коды ошибок
 class ErrorCode(Enum):
     """Перечисление кодов ошибок для унификации обработки."""
+
     UNKNOWN_ERROR = 1000
     API_ERROR = 2000
     VALIDATION_ERROR = 3000
@@ -29,43 +29,43 @@ class ErrorCode(Enum):
 
 
 class BaseAppException(Exception):
-    """
-    Базовый класс для всех исключений приложения.
+    """Базовый класс для всех исключений приложения.
 
     Attributes:
         code: Код ошибки из перечисления ErrorCode.
         message: Сообщение об ошибке.
         details: Дополнительные детали ошибки.
+
     """
 
     def __init__(
         self,
         message: str,
-        code: Union[ErrorCode, int] = ErrorCode.UNKNOWN_ERROR,
-        details: Optional[Dict[str, Any]] = None
+        code: ErrorCode | int = ErrorCode.UNKNOWN_ERROR,
+        details: dict[str, Any] | None = None,
     ):
-        """
-        Инициализирует исключение.
+        """Инициализирует исключение.
 
         Args:
             message: Сообщение об ошибке.
             code: Код ошибки.
             details: Дополнительная информация об ошибке.
+
         """
         self.code = code if isinstance(code, int) else code.value
         self.message = message
         self.details = details or {}
         super().__init__(message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Преобразует исключение в словарь для логирования или API-ответа."""
         result = {
-            'code': self.code,
-            'message': self.message,
+            "code": self.code,
+            "message": self.message,
         }
 
         if self.details:
-            result['details'] = self.details
+            result["details"] = self.details
 
         return result
 
@@ -82,12 +82,11 @@ class APIError(BaseAppException):
         self,
         message: str,
         status_code: int = 500,
-        code: Union[ErrorCode, int] = ErrorCode.API_ERROR,
-        details: Optional[Dict[str, Any]] = None,
-        response_body: Optional[str] = None
+        code: ErrorCode | int = ErrorCode.API_ERROR,
+        details: dict[str, Any] | None = None,
+        response_body: str | None = None,
     ):
-        """
-        Инициализирует исключение API.
+        """Инициализирует исключение API.
 
         Args:
             message: Сообщение об ошибке.
@@ -95,11 +94,12 @@ class APIError(BaseAppException):
             code: Внутренний код ошибки.
             details: Дополнительная информация.
             response_body: Тело ответа от API.
+
         """
         details = details or {}
-        details['status_code'] = status_code
+        details["status_code"] = status_code
         if response_body:
-            details['response_body'] = response_body
+            details["response_body"] = response_body
         super().__init__(message, code, details)
         self.status_code = status_code
 
@@ -110,22 +110,22 @@ class ValidationError(BaseAppException):
     def __init__(
         self,
         message: str,
-        field: Optional[str] = None,
-        code: Union[ErrorCode, int] = ErrorCode.VALIDATION_ERROR,
-        details: Optional[Dict[str, Any]] = None
+        field: str | None = None,
+        code: ErrorCode | int = ErrorCode.VALIDATION_ERROR,
+        details: dict[str, Any] | None = None,
     ):
-        """
-        Инициализирует исключение валидации.
+        """Инициализирует исключение валидации.
 
         Args:
             message: Сообщение об ошибке.
             field: Поле, вызвавшее ошибку валидации.
             code: Код ошибки.
             details: Дополнительная информация.
+
         """
         details = details or {}
         if field:
-            details['field'] = field
+            details["field"] = field
         super().__init__(message, code, details)
 
 
@@ -135,32 +135,31 @@ class BusinessLogicError(BaseAppException):
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        code: Union[ErrorCode, int] = ErrorCode.BUSINESS_LOGIC_ERROR,
-        details: Optional[Dict[str, Any]] = None
+        operation: str | None = None,
+        code: ErrorCode | int = ErrorCode.BUSINESS_LOGIC_ERROR,
+        details: dict[str, Any] | None = None,
     ):
-        """
-        Инициализирует исключение бизнес-логики.
+        """Инициализирует исключение бизнес-логики.
 
         Args:
             message: Сообщение об ошибке.
             operation: Операция, вызвавшая ошибку.
             code: Код ошибки.
             details: Дополнительная информация.
+
         """
         details = details or {}
         if operation:
-            details['operation'] = operation
+            details["operation"] = operation
         super().__init__(message, code, details)
 
 
 def handle_exceptions(
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
     default_error_message: str = "Произошла ошибка",
-    reraise: bool = True
+    reraise: bool = True,
 ) -> Callable[[F], F]:
-    """
-    Декоратор для обработки исключений с логированием.
+    """Декоратор для обработки исключений с логированием.
 
     Args:
         logger: Логгер для записи ошибок.
@@ -169,7 +168,9 @@ def handle_exceptions(
 
     Returns:
         Декорированная функция.
+
     """
+
     def decorator(func: F) -> F:
         # Создаем логгер на основе имени функции, если не передан
         nonlocal logger
@@ -183,20 +184,20 @@ def handle_exceptions(
             except BaseAppException as e:
                 # Логируем исключение приложения
                 logger.error(
-                    f"{default_error_message}: {str(e)}",
-                    extra={'context': e.to_dict()}
+                    f"{default_error_message}: {e!s}",
+                    extra={"context": e.to_dict()},
                 )
                 if reraise:
                     raise
             except Exception as e:
                 # Логируем неожиданное исключение
                 error_details = {
-                    'exception_type': e.__class__.__name__,
-                    'traceback': traceback.format_exc().split('\n')
+                    "exception_type": e.__class__.__name__,
+                    "traceback": traceback.format_exc().split("\n"),
                 }
                 logger.error(
-                    f"Необработанное исключение в {func.__qualname__}: {str(e)}",
-                    extra={'context': error_details}
+                    f"Необработанное исключение в {func.__qualname__}: {e!s}",
+                    extra={"context": error_details},
                 )
                 if reraise:
                     raise

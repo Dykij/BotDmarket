@@ -1,5 +1,4 @@
-"""
-Configuration module for running pytest.
+"""Configuration module for running pytest.
 """
 
 import os

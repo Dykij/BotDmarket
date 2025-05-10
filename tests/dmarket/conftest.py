@@ -38,7 +38,7 @@ def dmarket_api():
                 "x-api-key": "mock_key",
                 "x-sign": "mock_sign",
                 "Content-Type": "application/json",
-            }
+            },
         )
 
         return api

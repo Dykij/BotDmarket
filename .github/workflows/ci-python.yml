@@ -3,10 +3,10 @@ name: Python CI
 on:
   push:
     paths:
-      - 'signature-builder/python/**'
+      - "signature-builder/python/**"
   pull_request:
     paths:
-      - 'signature-builder/python/**'
+      - "signature-builder/python/**"
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
@@ -15,71 +15,187 @@ jobs:
     defaults:
       run:
         working-directory: signature-builder/python
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Set up Python
+
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
       - name: Check directory existence
         id: check-dir
         run: |
-          # Проверка существования директории
-          if [ ! -d "signature-builder/python" ]; then
-            echo "directory_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Warning: signature-builder/python directory not found"
+          echo "Проверка существования директории..."
+          if [ -d "." ]; then
+            echo "dir_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Директория signature-builder/python существует"
           else
-            echo "directory_exists=true" >> $GITHUB_OUTPUT
+            echo "dir_exists=false" >> $GITHUB_OUTPUT
+            echo "❌ Директория signature-builder/python не существует"
+            exit 1
           fi
-        working-directory: .
-      
-      - name: Install dependencies
-        if: steps.check-dir.outputs.directory_exists == 'true'
+
+      - name: Check dependencies
+        id: check-deps
+        if: steps.check-dir.outputs.dir_exists == 'true'
         run: |
+          echo "Проверка наличия файлов зависимостей..."
+          
+          if [ -f "requirements.txt" ]; then
+            echo "has_requirements=true" >> $GITHUB_OUTPUT
+            echo "✅ Найден файл requirements.txt"
+          else
+            echo "has_requirements=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Файл requirements.txt не найден"
+          fi
+          
+          if [ -f "pyproject.toml" ]; then
+            echo "has_pyproject=true" >> $GITHUB_OUTPUT
+            echo "✅ Найден файл pyproject.toml"
+          else
+            echo "has_pyproject=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Файл pyproject.toml не найден"
+          fi
+          
+          if [ -f "poetry.lock" ]; then
+            echo "has_poetry=true" >> $GITHUB_OUTPUT
+            echo "✅ Найден файл poetry.lock, будет использоваться Poetry"
+          else
+            echo "has_poetry=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies with Poetry
+        if: steps.check-deps.outputs.has_poetry == 'true'
+        run: |
+          echo "Установка зависимостей с помощью Poetry..."
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+          echo "POETRY_AVAILABLE=true" >> $GITHUB_ENV
+          echo "✅ Зависимости установлены с помощью Poetry"
+
+      - name: Install dependencies with pip
+        if: steps.check-deps.outputs.has_poetry != 'true' && (steps.check-deps.outputs.has_requirements == 'true' || steps.check-deps.outputs.has_pyproject == 'true')
+        run: |
+          echo "Установка зависимостей с помощью pip..."
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
+          
+          if [ "${{ steps.check-deps.outputs.has_requirements }}" == "true" ]; then
             pip install -r requirements.txt
-          else
-            echo "⚠️ requirements.txt not found, installing default testing packages"
-            pip install pytest ruff mypy
+            echo "✅ Зависимости установлены из requirements.txt"
+          elif [ "${{ steps.check-deps.outputs.has_pyproject }}" == "true" ]; then
+            pip install .
+            echo "✅ Зависимости установлены из pyproject.toml"
           fi
-      
-      - name: Lint with ruff
-        if: steps.check-dir.outputs.directory_exists == 'true'
+          
+          # Установка инструментов для тестирования и анализа кода
+          echo "Установка инструментов для тестирования и анализа кода..."
+          pip install pytest pytest-cov pytest-asyncio pytest-mock ruff mypy
+          echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
+          echo "✅ Инструменты установлены"
+
+      - name: Fallback installation
+        if: steps.check-deps.outputs.has_poetry != 'true' && steps.check-deps.outputs.has_requirements != 'true' && steps.check-deps.outputs.has_pyproject != 'true'
         run: |
-          if [ -d "src" ] && [ -d "tests" ] && [ -d "scripts" ]; then
-            python -m ruff check src tests scripts || echo "::warning::Ruff linting had issues but we'll continue"
-          elif [ -d "src" ]; then
-            python -m ruff check src || echo "::warning::Ruff linting had issues but we'll continue"
+          echo "⚠️ Не найдены файлы зависимостей. Устанавливаем минимальные инструменты для тестирования и анализа."
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-asyncio pytest-mock ruff mypy
+          echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
+          echo "✅ Минимальные инструменты установлены"
+
+      - name: Check for JavaScript files
+        id: check-js
+        run: |
+          echo "Проверка наличия JavaScript файлов..."
+          if [ -d "../javascript" ] || [ -n "$(find . -name "*.js" -o -name "*.ts")" ]; then
+            echo "has_js=true" >> $GITHUB_OUTPUT
+            echo "✅ Обнаружены JavaScript/TypeScript файлы"
           else
-            python -m ruff check . || echo "::warning::Ruff linting had issues but we'll continue"
+            echo "has_js=false" >> $GITHUB_OUTPUT
+            echo "JavaScript/TypeScript файлы не обнаружены"
           fi
-      
-      - name: Type check with mypy
-        if: steps.check-dir.outputs.directory_exists == 'true'
+
+      - name: Lint with Ruff
         run: |
-          if [ -d "src" ]; then
-            mypy src || echo "::warning::MyPy type checking had issues but we'll continue"
+          echo "Проверка кода с помощью Ruff..."
+          if [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
+            poetry run ruff check . || echo "::warning::Ruff выявил проблемы стиля кода"
           else
-            echo "⚠️ src directory not found, skipping mypy check"
+            ruff check . || echo "::warning::Ruff выявил проблемы стиля кода"
           fi
-      
-      - name: Run tests
-        if: steps.check-dir.outputs.directory_exists == 'true'
+
+      - name: Type check with MyPy
         run: |
-          if [ -d "tests" ]; then
-            python -m pytest tests || echo "::warning::Some tests failed but we'll continue"
+          echo "Проверка типов с помощью MyPy..."
+          if [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
+            poetry run mypy . || echo "::warning::MyPy выявил проблемы с типами"
           else
-            echo "⚠️ tests directory not found, skipping tests"
+            mypy . || echo "::warning::MyPy выявил проблемы с типами"
           fi
-      
-      - name: Placeholder step when directory doesn't exist
-        if: steps.check-dir.outputs.directory_exists != 'true'
+
+      - name: Run tests with pytest
         run: |
-          echo "⚠️ signature-builder/python directory not found!"
-          echo "✅ Marking job as successful - please check repository structure"
-        working-directory: .
+          echo "Запуск тестов с pytest..."
+          if [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
+            poetry run pytest --cov=. --cov-report=xml --cov-report=term || echo "::warning::Некоторые тесты завершились с ошибкой"
+          else
+            pytest --cov=. --cov-report=xml --cov-report=term || echo "::warning::Некоторые тесты завершились с ошибкой"
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Lint JavaScript files
+        if: steps.check-js.outputs.has_js == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install ESLint
+        if: steps.check-js.outputs.has_js == 'true'
+        run: |
+          echo "Установка ESLint для проверки JavaScript/TypeScript..."
+          npm init -y
+          npm install eslint --save-dev
+          
+          # Создаем базовую конфигурацию ESLint, если её нет
+          if [ ! -f ".eslintrc.js" ] && [ ! -f ".eslintrc.json" ] && [ ! -f ".eslintrc.yml" ]; then
+            echo "Создание базовой конфигурации ESLint..."
+            echo '{
+              "env": {
+                "browser": true,
+                "es2021": true,
+                "node": true
+              },
+              "extends": "eslint:recommended",
+              "parserOptions": {
+                "ecmaVersion": "latest",
+                "sourceType": "module"
+              },
+              "rules": {
+                "no-unused-vars": "warn",
+                "no-console": "warn"
+              }
+            }' > .eslintrc.json
+          fi
+          
+          echo "✅ ESLint установлен"
+
+      - name: Run ESLint
+        if: steps.check-js.outputs.has_js == 'true'
+        run: |
+          echo "Проверка JavaScript/TypeScript с помощью ESLint..."
+          npx eslint . --ext .js,.ts || echo "::warning::ESLint выявил проблемы в JavaScript/TypeScript файлах"

@@ -1,5 +1,4 @@
-"""
-Обработчики ошибок Telegram бота.
+"""Обработчики ошибок Telegram бота.
 
 Этот модуль содержит функции обработки различных ошибок,
 возникающих в процессе работы бота.
@@ -7,23 +6,23 @@
 
 import logging
 import traceback
-from typing import Optional, Dict, Any
 
-from telegram import Update, ParseMode
-from telegram.ext import ContextTypes, CallbackContext
+from telegram import ParseMode, Update
+from telegram.ext import ContextTypes
 
-from src.utils.api_error_handling import APIError, handle_api_error
 from src.telegram_bot.keyboards import get_back_to_arbitrage_keyboard
+from src.utils.api_error_handling import APIError
 
 logger = logging.getLogger(__name__)
 
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Обрабатывает ошибки, возникающие при работе бота.
-    
+    """Обрабатывает ошибки, возникающие при работе бота.
+
     Args:
         update: Объект Update от Telegram
         context: Контекст взаимодействия с ботом
+
     """
     error = context.error
 
@@ -34,9 +33,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Отправляем сообщение пользователю в зависимости от типа ошибки
     if isinstance(error, APIError):
         error_message = (
-            f"❌ <b>Ошибка API DMarket:</b>\n"
-            f"Код: {error.status_code}\n"
-            f"Сообщение: {error!s}"
+            f"❌ <b>Ошибка API DMarket:</b>\n" f"Код: {error.status_code}\n" f"Сообщение: {error!s}"
         )
     else:
         error_message = (
@@ -51,10 +48,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.effective_message.reply_text(
                 error_message,
                 parse_mode=ParseMode.HTML,
-                reply_markup=get_back_to_arbitrage_keyboard() if isinstance(error, APIError) else None
+                reply_markup=get_back_to_arbitrage_keyboard()
+                if isinstance(error, APIError)
+                else None,
             )
         except Exception as e:
             logger.error(f"Ошибка при отправке сообщения об ошибке: {e}")
 
+
 # Экспортируем обработчик ошибок
-__all__ = ['error_handler']
+__all__ = ["error_handler"]

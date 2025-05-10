@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pre-commit
+          echo "Установлена версия pre-commit: $(pre-commit --version)"
       
       - name: Cache pre-commit hooks
         uses: actions/cache@v4
@@ -39,9 +40,10 @@ jobs:
         run: |
           if [ -f .pre-commit-config.yaml ]; then
             echo "config_exists=true" >> $GITHUB_OUTPUT
+            echo "Найден файл конфигурации pre-commit"
           else
             echo "config_exists=false" >> $GITHUB_OUTPUT
-            echo "Pre-commit config not found, will create default configuration"
+            echo "Файл конфигурации pre-commit не найден, будет создана стандартная конфигурация"
           fi
       
       - name: Create pre-commit config if not exists
@@ -56,36 +58,50 @@ jobs:
               -   id: end-of-file-fixer
               -   id: check-yaml
               -   id: check-added-large-files
+              -   id: check-merge-conflict
+              -   id: detect-private-key
           
           -   repo: https://github.com/psf/black
-              rev: 24.1.1
+              rev: 24.3.0
               hooks:
               -   id: black
                   args: [--line-length=100]
           
           -   repo: https://github.com/astral-sh/ruff-pre-commit
-              rev: v0.3.0
+              rev: v0.3.2
               hooks:
               -   id: ruff
                   args: [--fix, --exit-non-zero-on-fix]
+          
+          -   repo: https://github.com/pycqa/isort
+              rev: 5.13.2
+              hooks:
+              -   id: isort
+                  args: ["--profile", "black", "--line-length", "100"]
           EOF
-          echo "Created default pre-commit config"
+          echo "Создана стандартная конфигурация pre-commit с дополнительными хуками"
       
       - name: Run pre-commit hooks
         run: |
-          # Try to run pre-commit, but don't fail the build if it has issues
-          pre-commit run --all-files || {
-            echo "::warning::Pre-commit had some issues but we'll continue"
-            true  # Ensure the step doesn't fail
-          }
+          echo "Запуск pre-commit hooks..."
+          
+          # Пытаемся запустить pre-commit, но продолжаем сборку, даже если есть проблемы
+          if pre-commit run --all-files; then
+            echo "✅ Все проверки pre-commit успешно пройдены"
+          else
+            echo "::warning::Pre-commit выявил проблемы, но мы продолжим сборку"
+            echo "⚠️ Убедитесь, что вы запускаете pre-commit локально перед отправкой коммитов"
+          fi
       
       - name: Check for files changed during pre-commit
         id: git-check
         run: |
+          echo "Проверка изменений, внесенных pre-commit hooks..."
           # Используем более совместимый синтаксис для проверки изменений
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::warning::Files were modified by pre-commit. Consider running pre-commit locally and committing changes."
-            git diff || echo "Could not show diff"
+            echo "::warning::Файлы были изменены pre-commit. Рекомендуется запустить pre-commit локально и закоммитить изменения."
+            echo "Внесенные изменения:"
+            git diff || echo "Не удалось отобразить изменения"
           else
-            echo "No files were modified by pre-commit hooks"
+            echo "✅ Файлы не были изменены pre-commit hooks"
           fi 

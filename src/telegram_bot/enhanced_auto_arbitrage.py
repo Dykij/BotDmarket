@@ -7,7 +7,8 @@ opportunities with better pagination, rate limiting, and progress tracking.
 import asyncio
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from src.dmarket.arbitrage import GAMES, ArbitrageTrader
 from src.dmarket.dmarket_api import DMarketAPI
@@ -30,14 +31,14 @@ DEFAULT_PRICE_RANGES = {
 
 # Default price chunks to split scanning into smaller ranges
 DEFAULT_PRICE_CHUNKS = [
-    (0.0, 1.0),     # $0 - $1
-    (1.0, 5.0),     # $1 - $5
-    (5.0, 10.0),    # $5 - $10
-    (10.0, 20.0),   # $10 - $20
-    (20.0, 50.0),   # $20 - $50
+    (0.0, 1.0),  # $0 - $1
+    (1.0, 5.0),  # $1 - $5
+    (5.0, 10.0),  # $5 - $10
+    (10.0, 20.0),  # $10 - $20
+    (20.0, 50.0),  # $20 - $50
     (50.0, 100.0),  # $50 - $100
-    (100.0, 200.0), # $100 - $200
-    (200.0, 500.0), # $200 - $500
+    (100.0, 200.0),  # $100 - $200
+    (200.0, 500.0),  # $200 - $500
 ]
 
 
@@ -46,12 +47,12 @@ async def scan_game_comprehensively(
     game: str,
     mode: str = "medium",
     max_items_per_range: int = 1000,
-    price_ranges: Optional[List[tuple[float, float]]] = None,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    dmarket_api: Optional[DMarketAPI] = None,
-) -> List[Dict[str, Any]]:
+    price_ranges: list[tuple[float, float]] | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+    dmarket_api: DMarketAPI | None = None,
+) -> list[dict[str, Any]]:
     """Scan a game comprehensively using multiple price ranges to ensure complete coverage.
-    
+
     Args:
         game: Game code (e.g. "csgo", "dota2", "rust", "tf2")
         mode: Search mode ("low", "medium", "high")
@@ -59,7 +60,7 @@ async def scan_game_comprehensively(
         price_ranges: List of price range tuples (min_price, max_price)
         progress_callback: Callback for reporting progress (items_fetched, total_items, status_message)
         dmarket_api: DMarket API instance or None to create a new one
-        
+
     Returns:
         List of found items for arbitrage
 
@@ -162,7 +163,7 @@ async def scan_game_comprehensively(
         # Process in batches of 2 to maintain rate limits
         price_range_results = []
         for i in range(0, len(tasks), 2):
-            batch = tasks[i:i+2]
+            batch = tasks[i : i + 2]
             batch_results = await asyncio.gather(*batch)
             price_range_results.extend(batch_results)
             # Small delay between batches
@@ -202,19 +203,19 @@ async def scan_game_comprehensively(
 
 @profile_performance
 async def scan_multiple_games_enhanced(
-    games: List[str] = ["csgo", "dota2", "rust", "tf2"],
+    games: list[str] = ["csgo", "dota2", "rust", "tf2"],
     mode: str = "medium",
     max_items_per_game: int = 50,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None,
-) -> Dict[str, List[Dict[str, Any]]]:
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     """Scan multiple games with enhanced comprehensive scanning.
-    
+
     Args:
         games: List of game codes to scan
         mode: Search mode ("low", "medium", "high")
         max_items_per_game: Maximum items to return per game
         progress_callback: Callback for reporting progress
-        
+
     Returns:
         Dictionary with game codes and lists of found items
 
@@ -264,19 +265,19 @@ async def scan_multiple_games_enhanced(
 
 
 async def start_auto_arbitrage_enhanced(
-    games: List[str] = ["csgo"],
+    games: list[str] = ["csgo"],
     mode: str = "medium",
     max_items: int = 20,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None,
-) -> List[Dict[str, Any]]:
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> list[dict[str, Any]]:
     """Start enhanced auto-arbitrage scanning for specified games.
-    
+
     Args:
         games: List of game codes to scan
         mode: Search mode ("low", "medium", "high")
         max_items: Maximum items to return in total
         progress_callback: Callback for reporting progress
-        
+
     Returns:
         Combined list of arbitrage opportunities
 

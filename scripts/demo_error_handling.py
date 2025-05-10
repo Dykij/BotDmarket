@@ -1,15 +1,18 @@
-"""
-Пример использования новой системы логирования и обработки ошибок.
+"""Пример использования новой системы логирования и обработки ошибок.
 Этот модуль демонстрирует, как правильно применять разработанные механизмы
 логирования с контекстом и обработки исключений.
 """
 
 import asyncio
-from typing import Dict, Any, List, Optional
-from src.utils.logging_utils import get_logger, log_exceptions
+from typing import Any
+
 from src.utils.exception_handling import (
-    handle_exceptions, APIError, ValidationError, BusinessLogicError, ErrorCode
+    APIError,
+    BusinessLogicError,
+    ValidationError,
+    handle_exceptions,
 )
+from src.utils.logging_utils import get_logger, log_exceptions
 
 # Получаем логгер с контекстом компонента
 logger = get_logger("examples.error_handling", {"component": "demo"})
@@ -19,25 +22,27 @@ class DemoAPIClient:
     """Пример клиента API с использованием новой системы обработки ошибок."""
 
     def __init__(self, api_key: str, base_url: str):
-        """
-        Инициализирует клиент API.
+        """Инициализирует клиент API.
 
         Args:
             api_key: Ключ API для авторизации.
             base_url: Базовый URL для запросов.
+
         """
         self.api_key = api_key
         self.base_url = base_url
         # Логгер с контекстом клиента
-        self.logger = get_logger("examples.api_client", {
-            "component": "api_client",
-            "base_url": base_url
-        })
+        self.logger = get_logger(
+            "examples.api_client",
+            {
+                "component": "api_client",
+                "base_url": base_url,
+            },
+        )
 
     @handle_exceptions(default_error_message="Ошибка при выполнении API запроса")
-    async def make_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Выполняет запрос к API.
+    async def make_request(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Выполняет запрос к API.
 
         Args:
             endpoint: Конечная точка API.
@@ -48,11 +53,12 @@ class DemoAPIClient:
 
         Raises:
             APIError: Если произошла ошибка при выполнении запроса.
+
         """
         # Логируем начало запроса с контекстом
         self.logger.info(
             f"Выполняется запрос к {endpoint}",
-            extra={"context": {"endpoint": endpoint, "params": params}}
+            extra={"context": {"endpoint": endpoint, "params": params}},
         )
 
         # Имитируем запрос
@@ -62,24 +68,23 @@ class DemoAPIClient:
         if "error" in params:
             error_type = params["error"]
             if error_type == "api":
-                self.logger.warning("API вернул ошибку",
-                                  extra={"context": {"status_code": 429}})
+                self.logger.warning("API вернул ошибку", extra={"context": {"status_code": 429}})
                 raise APIError(
                     message="Rate limit exceeded",
                     status_code=429,
-                    details={"retry_after": 30}
+                    details={"retry_after": 30},
                 )
-            elif error_type == "validation":
+            if error_type == "validation":
                 raise ValidationError(
                     message="Invalid parameter",
                     field="price",
-                    details={"value": params.get("price"), "valid_range": [0, 1000]}
+                    details={"value": params.get("price"), "valid_range": [0, 1000]},
                 )
 
         # Логируем успешное выполнение
         self.logger.info(
             f"Запрос к {endpoint} выполнен успешно",
-            extra={"context": {"endpoint": endpoint}}
+            extra={"context": {"endpoint": endpoint}},
         )
 
         return {"status": "success", "data": {"items": [1, 2, 3]}}
@@ -89,24 +94,28 @@ class DemoArbitrageService:
     """Пример сервиса арбитража с использованием новой системы обработки ошибок."""
 
     def __init__(self, api_client: DemoAPIClient):
-        """
-        Инициализирует сервис арбитража.
+        """Инициализирует сервис арбитража.
 
         Args:
             api_client: Клиент API для работы с внешним API.
+
         """
         self.api_client = api_client
         # Логгер с контекстом сервиса
-        self.logger = get_logger("examples.arbitrage", {
-            "component": "arbitrage_service"
-        })
+        self.logger = get_logger(
+            "examples.arbitrage",
+            {
+                "component": "arbitrage_service",
+            },
+        )
 
     @handle_exceptions(default_error_message="Ошибка при поиске арбитража")
     async def find_arbitrage_opportunities(
-        self, game: str, min_profit: float = 0.0
-    ) -> List[Dict[str, Any]]:
-        """
-        Ищет арбитражные возможности.
+        self,
+        game: str,
+        min_profit: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """Ищет арбитражные возможности.
 
         Args:
             game: Игра для поиска арбитража.
@@ -118,18 +127,19 @@ class DemoArbitrageService:
         Raises:
             BusinessLogicError: Если произошла ошибка бизнес-логики.
             ValidationError: Если параметры некорректны.
+
         """
         # Проверка параметров
         if min_profit < 0:
             raise ValidationError(
                 message="Минимальная прибыль не может быть отрицательной",
-                field="min_profit"
+                field="min_profit",
             )
 
         # Логируем начало поиска
         self.logger.info(
             f"Начат поиск арбитража для {game}",
-            extra={"context": {"game": game, "min_profit": min_profit}}
+            extra={"context": {"game": game, "min_profit": min_profit}},
         )
 
         try:
@@ -143,7 +153,7 @@ class DemoArbitrageService:
             # Логируем результат
             self.logger.info(
                 f"Найдено {len(opportunities)} арбитражных возможностей",
-                extra={"context": {"game": game, "count": len(opportunities)}}
+                extra={"context": {"game": game, "count": len(opportunities)}},
             )
 
             return opportunities
@@ -152,14 +162,15 @@ class DemoArbitrageService:
             raise BusinessLogicError(
                 message=f"Не удалось получить данные для арбитража: {e.message}",
                 operation="find_arbitrage",
-                details={"original_error": e.to_dict()}
+                details={"original_error": e.to_dict()},
             ) from e
 
     def _calculate_opportunities(
-        self, items_data: Dict[str, Any], min_profit: float
-    ) -> List[Dict[str, Any]]:
-        """
-        Вычисляет арбитражные возможности из данных предметов.
+        self,
+        items_data: dict[str, Any],
+        min_profit: float,
+    ) -> list[dict[str, Any]]:
+        """Вычисляет арбитражные возможности из данных предметов.
 
         Args:
             items_data: Данные предметов из API.
@@ -167,16 +178,19 @@ class DemoArbitrageService:
 
         Returns:
             Список арбитражных возможностей.
+
         """
         # Упрощенная логика расчета арбитража
         opportunities = []
         for item in items_data.get("data", {}).get("items", []):
             # В реальном коде здесь была бы настоящая логика
-            opportunities.append({
-                "name": f"Item {item}",
-                "profit": 10.0,
-                "price": 100
-            })
+            opportunities.append(
+                {
+                    "name": f"Item {item}",
+                    "profit": 10.0,
+                    "price": 100,
+                }
+            )
 
         return opportunities
 

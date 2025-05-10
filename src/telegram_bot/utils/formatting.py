@@ -1,12 +1,10 @@
+"""Вспомогательные функции для форматирования данных в телеграм-боте
 """
-Вспомогательные функции для форматирования данных в телеграм-боте
-"""
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 
-def format_dmarket_results(items: Optional[List[Dict[str, Any]]], mode: str, game: str) -> str:
-    """
-    Форматирует результаты поиска арбитражных возможностей для отображения в Telegram.
+def format_dmarket_results(items: list[dict[str, Any]] | None, mode: str, game: str) -> str:
+    """Форматирует результаты поиска арбитражных возможностей для отображения в Telegram.
 
     Args:
         items: Список предметов с арбитражными возможностями
@@ -15,12 +13,13 @@ def format_dmarket_results(items: Optional[List[Dict[str, Any]]], mode: str, gam
 
     Returns:
         Отформатированный текст для отправки в Telegram
+
     """
     if not items:
         mode_display = {
             "boost": "режим разгона баланса",
             "mid": "средний режим",
-            "pro": "профессиональный режим"
+            "pro": "профессиональный режим",
         }
         return f"ℹ️ Не найдено арбитражных возможностей для {game.upper()} ({mode_display.get(mode, mode)})"
 
@@ -28,13 +27,13 @@ def format_dmarket_results(items: Optional[List[Dict[str, Any]]], mode: str, gam
         "csgo": "CS2",
         "dota2": "Dota 2",
         "rust": "Rust",
-        "tf2": "Team Fortress 2"
+        "tf2": "Team Fortress 2",
     }
 
     mode_display = {
         "boost": "быстрый разгон баланса",
         "mid": "средний трейдер",
-        "pro": "профессионал"
+        "pro": "профессионал",
     }
 
     text = [f"🔍 Результаты арбитража ({mode_display.get(mode, mode)}):"]
@@ -43,7 +42,11 @@ def format_dmarket_results(items: Optional[List[Dict[str, Any]]], mode: str, gam
     for i, item in enumerate(items[:10], 1):
         title = item.get("title", "Неизвестный предмет")
         profit = item.get("profit", 0)
-        price = item.get("price", {}).get("USD", 0) / 100 if isinstance(item.get("price", {}), dict) else 0
+        price = (
+            item.get("price", {}).get("USD", 0) / 100
+            if isinstance(item.get("price", {}), dict)
+            else 0
+        )
         profit_percentage = (profit / price) * 100 if price > 0 else 0
 
         text.append(f"{i}. {title}")
@@ -56,9 +59,8 @@ def format_dmarket_results(items: Optional[List[Dict[str, Any]]], mode: str, gam
     return "\n".join(text)
 
 
-def format_best_opportunities(items: List[Dict[str, Any]], game: str) -> str:
-    """
-    Форматирует лучшие арбитражные возможности для отображения в Telegram.
+def format_best_opportunities(items: list[dict[str, Any]], game: str) -> str:
+    """Форматирует лучшие арбитражные возможности для отображения в Telegram.
 
     Args:
         items: Список предметов с лучшими арбитражными возможностями
@@ -66,6 +68,7 @@ def format_best_opportunities(items: List[Dict[str, Any]], game: str) -> str:
 
     Returns:
         Отформатированный текст для отправки в Telegram
+
     """
     if not items:
         return f"ℹ️ Не найдено лучших арбитражных возможностей для {game.upper()}"
@@ -74,10 +77,10 @@ def format_best_opportunities(items: List[Dict[str, Any]], game: str) -> str:
         "csgo": "CS2",
         "dota2": "Dota 2",
         "rust": "Rust",
-        "tf2": "Team Fortress 2"
+        "tf2": "Team Fortress 2",
     }
 
-    text = [f"🌟 Лучшие арбитражные возможности:"]
+    text = ["🌟 Лучшие арбитражные возможности:"]
     text.append(f"🎮 Игра: {game_display.get(game, game.upper())}\n")
 
     for i, item in enumerate(items[:10], 1):
@@ -96,10 +99,10 @@ def format_best_opportunities(items: List[Dict[str, Any]], game: str) -> str:
     return "\n".join(text)
 
 
-def format_paginated_results(items: List[Dict[str, Any]], game: str, mode: str,
-                             current_page: int, total_pages: int) -> str:
-    """
-    Форматирует результаты с пагинацией для отображения в Telegram.
+def format_paginated_results(
+    items: list[dict[str, Any]], game: str, mode: str, current_page: int, total_pages: int
+) -> str:
+    """Форматирует результаты с пагинацией для отображения в Telegram.
 
     Args:
         items: Список предметов на текущей странице
@@ -110,13 +113,14 @@ def format_paginated_results(items: List[Dict[str, Any]], game: str, mode: str,
 
     Returns:
         Отформатированный текст для отправки в Telegram
+
     """
     if not items:
         mode_display = {
             "boost": "авто-буст",
             "mid": "средний режим",
             "pro": "профессиональный режим",
-            "auto_boost": "автоматический арбитраж"
+            "auto_boost": "автоматический арбитраж",
         }
         return f"ℹ️ Нет данных об автоматическом арбитраже ({mode})"
 
@@ -124,27 +128,31 @@ def format_paginated_results(items: List[Dict[str, Any]], game: str, mode: str,
         "csgo": "CS2",
         "dota2": "Dota 2",
         "rust": "Rust",
-        "tf2": "Team Fortress 2"
+        "tf2": "Team Fortress 2",
     }
 
     risk_levels = {
         "high": "высокий",
         "medium": "средний",
-        "low": "низкий"
+        "low": "низкий",
     }
 
     liquidity_levels = {
         "high": "высокая",
         "medium": "средняя",
-        "low": "низкая"
+        "low": "низкая",
     }
 
-    text = [f"🤖 Результаты автоматического арбитража (средняя прибыль):"]
+    text = ["🤖 Результаты автоматического арбитража (средняя прибыль):"]
 
     for i, item in enumerate(items, 1):
         title = item.get("title", "Неизвестный предмет")
         profit = item.get("profit", 0)
-        price = item.get("price", {}).get("amount", 0) / 100 if isinstance(item.get("price", {}), dict) else 0
+        price = (
+            item.get("price", {}).get("amount", 0) / 100
+            if isinstance(item.get("price", {}), dict)
+            else 0
+        )
         profit_percentage = (profit / price) * 100 if price > 0 else 0
 
         # Дополнительные данные для расширенной информации

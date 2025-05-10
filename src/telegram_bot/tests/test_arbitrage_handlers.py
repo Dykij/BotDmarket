@@ -15,7 +15,8 @@ from src.telegram_bot.handlers.arbitrage_callback_impl import (
 
 @pytest.mark.asyncio
 async def test_handle_dmarket_arbitrage_impl_boost(
-    mock_telegram_context, mock_arbitrage_functions
+    mock_telegram_context,
+    mock_arbitrage_functions,
 ):
     """Тестирует обработку запроса boost арбитража."""
     # Настраиваем запрос и контекст
@@ -31,9 +32,7 @@ async def test_handle_dmarket_arbitrage_impl_boost(
     await handle_dmarket_arbitrage_impl(query, context, "boost")
 
     # Проверяем, что были вызваны нужные методы
-    assert (
-        query.edit_message_text.call_count == 2
-    )  # Сначала сообщение о поиске, затем результаты
+    assert query.edit_message_text.call_count == 2  # Сначала сообщение о поиске, затем результаты
     mock_arbitrage_functions["boost"].assert_called_once_with("csgo")
 
     # Проверяем, что последний режим был сохранен в контексте
@@ -47,7 +46,8 @@ async def test_handle_dmarket_arbitrage_impl_boost(
 
 @pytest.mark.asyncio
 async def test_handle_dmarket_arbitrage_impl_mid(
-    mock_telegram_context, mock_arbitrage_functions
+    mock_telegram_context,
+    mock_arbitrage_functions,
 ):
     """Тестирует обработку запроса mid арбитража."""
     # Настраиваем запрос и контекст
@@ -76,7 +76,8 @@ async def test_handle_dmarket_arbitrage_impl_mid(
 
 @pytest.mark.asyncio
 async def test_handle_dmarket_arbitrage_impl_pro(
-    mock_telegram_context, mock_arbitrage_functions
+    mock_telegram_context,
+    mock_arbitrage_functions,
 ):
     """Тестирует обработку запроса pro арбитража."""
     # Настраиваем запрос и контекст
@@ -137,7 +138,8 @@ async def test_handle_dmarket_arbitrage_impl_api_error(mock_telegram_context):
 
 @pytest.mark.asyncio
 async def test_handle_best_opportunities_impl(
-    mock_telegram_context, mock_arbitrage_functions
+    mock_telegram_context,
+    mock_arbitrage_functions,
 ):
     """Тестирует обработку запроса лучших возможностей."""
     # Настраиваем запрос и контекст

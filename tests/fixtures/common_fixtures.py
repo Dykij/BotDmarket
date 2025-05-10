@@ -1,13 +1,14 @@
-"""
-Основные фикстуры для функциональных групп тестов.
+"""Основные фикстуры для функциональных групп тестов.
 Этот файл улучшает организацию тестов путем группирования
 связанных фикстур в одном месте.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from telegram import Update, Message, User, CallbackQuery, InlineKeyboardMarkup
+
+import pytest
+from telegram import CallbackQuery, Message, Update, User
 from telegram.ext import CallbackContext
+
 
 # Группа фикстур для Telegram-бота
 @pytest.fixture
@@ -59,11 +60,11 @@ def mock_telegram_context():
 @pytest.fixture
 def mock_dmarket_api():
     """Создает мок DMarket API."""
-    with patch('src.dmarket.dmarket_api.DMarketAPI') as mock_api:
+    with patch("src.dmarket.dmarket_api.DMarketAPI") as mock_api:
         # Настройка мока для типичных методов API
         instance = mock_api.return_value
-        instance._generate_signature.return_value = {'X-Sign': 'test_signature'}
-        instance.get_balance = AsyncMock(return_value={'dmc': 1000, 'usd': 100})
+        instance._generate_signature.return_value = {"X-Sign": "test_signature"}
+        instance.get_balance = AsyncMock(return_value={"dmc": 1000, "usd": 100})
         yield instance
 
 
@@ -72,20 +73,20 @@ def mock_dmarket_api():
 def mock_arbitrage_data():
     """Предоставляет тестовые данные для арбитража."""
     return {
-        'cs': [
+        "cs": [
             {
-                'title': 'Тестовый предмет CS:GO',
-                'price': {'DMC': '100'},
-                'suggestedPrice': {'DMC': '120'},
-                'itemId': 'test_item_id_1'
+                "title": "Тестовый предмет CS:GO",
+                "price": {"DMC": "100"},
+                "suggestedPrice": {"DMC": "120"},
+                "itemId": "test_item_id_1",
             },
             {
-                'title': 'Второй тестовый предмет',
-                'price': {'DMC': '200'},
-                'suggestedPrice': {'DMC': '240'},
-                'itemId': 'test_item_id_2'
-            }
-        ]
+                "title": "Второй тестовый предмет",
+                "price": {"DMC": "200"},
+                "suggestedPrice": {"DMC": "240"},
+                "itemId": "test_item_id_2",
+            },
+        ],
     }
 
 

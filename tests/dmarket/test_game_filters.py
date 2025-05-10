@@ -139,7 +139,8 @@ def test_price_filter():
     assert filter_obj.apply_filters(medium_item, {"min_price": 30, "max_price": 70})
     assert not filter_obj.apply_filters(cheap_item, {"min_price": 30, "max_price": 70})
     assert not filter_obj.apply_filters(
-        expensive_item, {"min_price": 30, "max_price": 70}
+        expensive_item,
+        {"min_price": 30, "max_price": 70},
     )
 
 
@@ -223,14 +224,18 @@ def test_parse_filters():
 
     # Filter by price range
     filtered = apply_filters_to_items(
-        items, "csgo", {"min_price": 70, "max_price": 100}
+        items,
+        "csgo",
+        {"min_price": 70, "max_price": 100},
     )
     assert len(filtered) == 1
     assert filtered[0]["title"] == "USP-S | Kill Confirmed"
 
     # Combined filter
     filtered = apply_filters_to_items(
-        items, "csgo", {"min_price": 40, "category": "Rifle"}
+        items,
+        "csgo",
+        {"min_price": 40, "category": "Rifle"},
     )
     assert len(filtered) == 1
     assert filtered[0]["title"] == "AK-47 | Redline"

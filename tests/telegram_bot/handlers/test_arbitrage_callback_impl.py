@@ -104,8 +104,7 @@ async def test_handle_dmarket_arbitrage_impl_pagination(
         # Проверяем наличие кнопки "Следующая" в клавиатуре
         keyboard = kwargs["reply_markup"].inline_keyboard
         assert any(
-            button.text == "Следующая ➡️"
-            and "paginate:next:boost" in button.callback_data
+            button.text == "Следующая ➡️" and "paginate:next:boost" in button.callback_data
             for row in keyboard
             for button in row
         )

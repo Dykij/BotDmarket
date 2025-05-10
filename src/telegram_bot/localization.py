@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Модуль локализации для Telegram-бота DMarket.
+"""Модуль локализации для Telegram-бота DMarket.
 Содержит строки интерфейса на различных языках.
 
 Поддерживаемые языки:
@@ -15,7 +13,7 @@ LANGUAGES = {
     "ru": "Русский",
     "en": "English",
     "es": "Español",
-    "de": "Deutsch"
+    "de": "Deutsch",
 }
 
 # Локализованные строки
@@ -31,7 +29,6 @@ LOCALIZATIONS = {
         "api_error": "❌ Ошибка API DMarket: {error}",
         "back_button": "⬅️ Назад",
         "back_to_menu": "⬅️ Назад в меню",
-        
         # Настройки
         "settings": "⚙️ Настройки профиля",
         "language": "🌐 Текущий язык: {lang}\n\nВыберите язык интерфейса:",
@@ -43,16 +40,14 @@ LOCALIZATIONS = {
         "trade_settings": "💼 Настройки торговли",
         "auto_trading_on": "✅ Автоматическая торговля ВКЛЮЧЕНА",
         "auto_trading_off": "❌ Автоматическая торговля ВЫКЛЮЧЕНА",
-        
         # Арбитраж
         "arbitrage_boost": "🚀 Разгон баланса",
-        "arbitrage_mid": "💼 Средний трейдер", 
+        "arbitrage_mid": "💼 Средний трейдер",
         "arbitrage_pro": "💰 Trade Pro",
         "best_opportunities": "🌟 Лучшие возможности",
         "auto_arbitrage": "🤖 Авто-арбитраж",
         "select_game": "🎮 Выбрать игру",
         "game_selected": "🎮 Выбрана игра: {game}",
-        
         # Автоматический арбитраж
         "auto_low": "💰 Минимальная прибыль",
         "auto_medium": "💰💰 Средняя прибыль",
@@ -65,12 +60,10 @@ LOCALIZATIONS = {
         "auto_processing": "⏳ Обрабатываем и готовим к автоматической торговле...",
         "auto_insufficient_balance": "⚠️ Недостаточно средств для торговли.\n\nТекущий баланс: ${balance:.2f}\nДля торговли необходимо минимум $1.00",
         "auto_completed": "✅ Арбитраж завершен!\n\nНайдено предметов: {found}\nКупленные предметы: {purchases}\nПроданные предметы: {sales}\nОбщая прибыль: ${profit:.2f}",
-        
         # Ошибки
         "error_general": "❌ Произошла ошибка: {error}",
         "error_api_keys": "❌ Ошибка: API ключи DMarket не настроены.\n\nДля использования автоматического арбитража необходимо указать API ключи DMarket с помощью команды /setup.",
         "try_again": "🔄 Попробовать снова",
-        
         # Риск и ликвидность
         "risk_low": "низкий",
         "risk_medium": "средний",
@@ -78,18 +71,15 @@ LOCALIZATIONS = {
         "liquidity_low": "низкая",
         "liquidity_medium": "средняя",
         "liquidity_high": "высокая",
-        
         # Финансы
         "balance": "💰 Баланс: ${balance:.2f}",
         "insufficient_balance": "⚠️ Недостаточно средств: ${balance:.2f}",
         "profit": "📈 Прибыль: ${profit:.2f} ({percent:.1f}%)",
-        
         # Пагинация
         "pagination_status": "📄 Страница {current} из {total}",
         "next_page": "➡️ Вперед",
-        "previous_page": "⬅️ Назад"
+        "previous_page": "⬅️ Назад",
     },
-    
     # English
     "en": {
         # General strings
@@ -101,7 +91,6 @@ LOCALIZATIONS = {
         "api_error": "❌ DMarket API error: {error}",
         "back_button": "⬅️ Back",
         "back_to_menu": "⬅️ Back to menu",
-        
         # Settings
         "settings": "⚙️ Profile settings",
         "language": "🌐 Current language: {lang}\n\nSelect interface language:",
@@ -113,16 +102,14 @@ LOCALIZATIONS = {
         "trade_settings": "💼 Trade settings",
         "auto_trading_on": "✅ Automatic trading is ENABLED",
         "auto_trading_off": "❌ Automatic trading is DISABLED",
-        
         # Arbitrage
         "arbitrage_boost": "🚀 Balance Booster",
-        "arbitrage_mid": "💼 Mid Trader", 
+        "arbitrage_mid": "💼 Mid Trader",
         "arbitrage_pro": "💰 Trade Pro",
         "best_opportunities": "🌟 Best Opportunities",
         "auto_arbitrage": "🤖 Auto Arbitrage",
         "select_game": "🎮 Select game",
         "game_selected": "🎮 Selected game: {game}",
-        
         # Auto arbitrage
         "auto_low": "💰 Minimum profit",
         "auto_medium": "💰💰 Medium profit",
@@ -135,12 +122,10 @@ LOCALIZATIONS = {
         "auto_processing": "⏳ Processing and preparing for automatic trading...",
         "auto_insufficient_balance": "⚠️ Insufficient balance for trading.\n\nCurrent balance: ${balance:.2f}\nMinimum required: $1.00",
         "auto_completed": "✅ Arbitrage completed!\n\nItems found: {found}\nItems purchased: {purchases}\nItems sold: {sales}\nTotal profit: ${profit:.2f}",
-        
         # Errors
         "error_general": "❌ An error occurred: {error}",
         "error_api_keys": "❌ Error: DMarket API keys are not configured.\n\nTo use automatic arbitrage, you need to set DMarket API keys using the /setup command.",
         "try_again": "🔄 Try again",
-        
         # Risk and liquidity
         "risk_low": "low",
         "risk_medium": "medium",
@@ -148,18 +133,15 @@ LOCALIZATIONS = {
         "liquidity_low": "low",
         "liquidity_medium": "medium",
         "liquidity_high": "high",
-        
         # Finances
         "balance": "💰 Balance: ${balance:.2f}",
         "insufficient_balance": "⚠️ Insufficient balance: ${balance:.2f}",
         "profit": "📈 Profit: ${profit:.2f} ({percent:.1f}%)",
-        
         # Pagination
         "pagination_status": "📄 Page {current} of {total}",
         "next_page": "➡️ Next",
-        "previous_page": "⬅️ Previous"
+        "previous_page": "⬅️ Previous",
     },
-    
     # Español
     "es": {
         # Cadenas generales
@@ -171,7 +153,6 @@ LOCALIZATIONS = {
         "api_error": "❌ Error de API de DMarket: {error}",
         "back_button": "⬅️ Atrás",
         "back_to_menu": "⬅️ Volver al menú",
-        
         # Configuración
         "settings": "⚙️ Configuración de perfil",
         "language": "🌐 Idioma actual: {lang}\n\nSelecciona el idioma de la interfaz:",
@@ -183,16 +164,14 @@ LOCALIZATIONS = {
         "trade_settings": "💼 Configuración de comercio",
         "auto_trading_on": "✅ El comercio automático está ACTIVADO",
         "auto_trading_off": "❌ El comercio automático está DESACTIVADO",
-        
         # Arbitraje
         "arbitrage_boost": "🚀 Impulsor de Balance",
-        "arbitrage_mid": "💼 Comerciante Medio", 
+        "arbitrage_mid": "💼 Comerciante Medio",
         "arbitrage_pro": "💰 Comerciante Pro",
         "best_opportunities": "🌟 Mejores Oportunidades",
         "auto_arbitrage": "🤖 Auto Arbitraje",
         "select_game": "🎮 Seleccionar juego",
         "game_selected": "🎮 Juego seleccionado: {game}",
-        
         # Auto arbitraje
         "auto_low": "💰 Beneficio mínimo",
         "auto_medium": "💰💰 Beneficio medio",
@@ -205,12 +184,10 @@ LOCALIZATIONS = {
         "auto_processing": "⏳ Procesando y preparando para comercio automático...",
         "auto_insufficient_balance": "⚠️ Saldo insuficiente para comerciar.\n\nSaldo actual: ${balance:.2f}\nMínimo requerido: $1.00",
         "auto_completed": "✅ ¡Arbitraje completado!\n\nArtículos encontrados: {found}\nArtículos comprados: {purchases}\nArtículos vendidos: {sales}\nBeneficio total: ${profit:.2f}",
-        
         # Errores
         "error_general": "❌ Ocurrió un error: {error}",
         "error_api_keys": "❌ Error: Las claves API de DMarket no están configuradas.\n\nPara usar el arbitraje automático, debes configurar las claves API de DMarket usando el comando /setup.",
         "try_again": "🔄 Intentar de nuevo",
-        
         # Riesgo y liquidez
         "risk_low": "bajo",
         "risk_medium": "medio",
@@ -218,18 +195,15 @@ LOCALIZATIONS = {
         "liquidity_low": "baja",
         "liquidity_medium": "media",
         "liquidity_high": "alta",
-        
         # Finanzas
         "balance": "💰 Saldo: ${balance:.2f}",
         "insufficient_balance": "⚠️ Saldo insuficiente: ${balance:.2f}",
         "profit": "📈 Beneficio: ${profit:.2f} ({percent:.1f}%)",
-        
         # Paginación
         "pagination_status": "📄 Página {current} de {total}",
         "next_page": "➡️ Siguiente",
-        "previous_page": "⬅️ Anterior"
+        "previous_page": "⬅️ Anterior",
     },
-    
     # Deutsch
     "de": {
         # Allgemeine Strings
@@ -241,7 +215,6 @@ LOCALIZATIONS = {
         "api_error": "❌ DMarket API-Fehler: {error}",
         "back_button": "⬅️ Zurück",
         "back_to_menu": "⬅️ Zurück zum Menü",
-        
         # Einstellungen
         "settings": "⚙️ Profileinstellungen",
         "language": "🌐 Aktuelle Sprache: {lang}\n\nWähle die Oberflächensprache:",
@@ -253,16 +226,14 @@ LOCALIZATIONS = {
         "trade_settings": "💼 Handelseinstellungen",
         "auto_trading_on": "✅ Automatischer Handel ist AKTIVIERT",
         "auto_trading_off": "❌ Automatischer Handel ist DEAKTIVIERT",
-        
         # Arbitrage
         "arbitrage_boost": "🚀 Guthaben-Booster",
-        "arbitrage_mid": "💼 Mittlerer Händler", 
+        "arbitrage_mid": "💼 Mittlerer Händler",
         "arbitrage_pro": "💰 Handels-Profi",
         "best_opportunities": "🌟 Beste Gelegenheiten",
         "auto_arbitrage": "🤖 Auto-Arbitrage",
         "select_game": "🎮 Spiel auswählen",
         "game_selected": "🎮 Ausgewähltes Spiel: {game}",
-        
         # Auto-Arbitrage
         "auto_low": "💰 Minimaler Gewinn",
         "auto_medium": "💰💰 Mittlerer Gewinn",
@@ -275,12 +246,10 @@ LOCALIZATIONS = {
         "auto_processing": "⏳ Verarbeite und bereite für automatischen Handel vor...",
         "auto_insufficient_balance": "⚠️ Unzureichendes Guthaben für Handel.\n\nAktuelles Guthaben: ${balance:.2f}\nMinimum erforderlich: $1.00",
         "auto_completed": "✅ Arbitrage abgeschlossen!\n\nArtikel gefunden: {found}\nArtikel gekauft: {purchases}\nArtikel verkauft: {sales}\nGesamtgewinn: ${profit:.2f}",
-        
         # Fehler
         "error_general": "❌ Ein Fehler ist aufgetreten: {error}",
         "error_api_keys": "❌ Fehler: DMarket API-Schlüssel sind nicht konfiguriert.\n\nUm automatische Arbitrage zu nutzen, musst du DMarket API-Schlüssel mit dem Befehl /setup einrichten.",
         "try_again": "🔄 Erneut versuchen",
-        
         # Risiko und Liquidität
         "risk_low": "niedrig",
         "risk_medium": "mittel",
@@ -288,15 +257,13 @@ LOCALIZATIONS = {
         "liquidity_low": "niedrig",
         "liquidity_medium": "mittel",
         "liquidity_high": "hoch",
-        
         # Finanzen
         "balance": "💰 Guthaben: ${balance:.2f}",
         "insufficient_balance": "⚠️ Unzureichendes Guthaben: ${balance:.2f}",
         "profit": "📈 Gewinn: ${profit:.2f} ({percent:.1f}%)",
-        
         # Paginierung
         "pagination_status": "📄 Seite {current} von {total}",
         "next_page": "➡️ Weiter",
-        "previous_page": "⬅️ Zurück"
-    }
+        "previous_page": "⬅️ Zurück",
+    },
 }

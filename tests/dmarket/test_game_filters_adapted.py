@@ -97,10 +97,12 @@ def test_base_filter_price():
 
     # Проверяем комбинацию фильтров
     assert base_filter.apply_filters(
-        mid_price_item, {"min_price": 500, "max_price": 1500}
+        mid_price_item,
+        {"min_price": 500, "max_price": 1500},
     )
     assert not base_filter.apply_filters(
-        mid_price_item, {"min_price": 1500, "max_price": 3000}
+        mid_price_item,
+        {"min_price": 1500, "max_price": 3000},
     )
 
 
@@ -200,7 +202,8 @@ def test_csgo_filter_exterior(csgo_filter, sample_csgo_item):
 
         # Проверяем несоответствие предмета фильтру
         assert not csgo_filter.apply_filters(
-            sample_csgo_item, {"exterior": "Factory New"}
+            sample_csgo_item,
+            {"exterior": "Factory New"},
         )
 
 
@@ -210,11 +213,13 @@ def test_csgo_filter_stattrak_souvenir(csgo_filter, sample_csgo_item):
     # Mock the apply_filters method to test stattrak filtering directly
     def mock_apply_stattrak_filter(self, item, filters):
         if "stattrak" in filters and filters["stattrak"] != item["extra"].get(
-            "stattrak", False
+            "stattrak",
+            False,
         ):
             return False
         if "souvenir" in filters and filters["souvenir"] != item["extra"].get(
-            "souvenir", False
+            "souvenir",
+            False,
         ):
             return False
         return True
@@ -222,7 +227,8 @@ def test_csgo_filter_stattrak_souvenir(csgo_filter, sample_csgo_item):
     with patch.object(CS2Filter, "apply_filters", mock_apply_stattrak_filter):
         # Проверяем стандартный предмет (без StatTrak и Souvenir)
         assert csgo_filter.apply_filters(
-            sample_csgo_item, {"stattrak": False, "souvenir": False}
+            sample_csgo_item,
+            {"stattrak": False, "souvenir": False},
         )
         assert not csgo_filter.apply_filters(sample_csgo_item, {"stattrak": True})
         assert not csgo_filter.apply_filters(sample_csgo_item, {"souvenir": True})

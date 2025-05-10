@@ -1,15 +1,15 @@
+"""Тесты для обработчиков команд из модуля commands.py
 """
-Тесты для обработчиков команд из модуля commands.py
-"""
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from telegram import Update, User
 
 from src.telegram_bot.handlers.commands import (
-    start,
-    help_command,
+    arbitrage_command,
     dmarket_status,
-    arbitrage_command
+    help_command,
+    start,
 )
 
 
@@ -42,7 +42,7 @@ async def test_start_command(mock_get_keyboard, mock_get_localized_text):
     mock_get_keyboard.assert_called_once()
     update.message.reply_html.assert_called_once_with(
         "Тестовое приветственное сообщение",
-        reply_markup=mock_keyboard
+        reply_markup=mock_keyboard,
     )
 
 
@@ -110,5 +110,5 @@ async def test_arbitrage_command(mock_get_keyboard):
     mock_get_keyboard.assert_called_once()
     update.message.reply_text.assert_called_once_with(
         "📊 Выберите режим арбитража:",
-        reply_markup=mock_keyboard
+        reply_markup=mock_keyboard,
     )

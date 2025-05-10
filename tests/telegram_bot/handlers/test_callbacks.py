@@ -52,7 +52,9 @@ async def test_arbitrage_callback(mock_arbitrage_impl, mock_update, mock_context
 @pytest.mark.asyncio
 @patch("src.telegram_bot.handlers.callbacks.handle_dmarket_arbitrage_impl")
 async def test_handle_dmarket_arbitrage(
-    mock_dmarket_arbitrage_impl, mock_update, mock_context
+    mock_dmarket_arbitrage_impl,
+    mock_update,
+    mock_context,
 ):
     """Тестирует, что handle_dmarket_arbitrage вызывает правильную реализацию."""
     # Настраиваем тестовые данные
@@ -72,7 +74,9 @@ async def test_handle_dmarket_arbitrage(
 @pytest.mark.asyncio
 @patch("src.telegram_bot.handlers.callbacks.handle_best_opportunities_impl")
 async def test_handle_best_opportunities(
-    mock_best_opportunities_impl, mock_update, mock_context
+    mock_best_opportunities_impl,
+    mock_update,
+    mock_context,
 ):
     """Тестирует, что handle_best_opportunities вызывает правильную реализацию."""
     # Настраиваем тестовые данные
@@ -91,7 +95,9 @@ async def test_handle_best_opportunities(
 @pytest.mark.asyncio
 @patch("src.telegram_bot.handlers.callbacks.handle_dmarket_arbitrage_impl")
 async def test_handle_dmarket_arbitrage_different_modes(
-    mock_dmarket_arbitrage_impl, mock_update, mock_context
+    mock_dmarket_arbitrage_impl,
+    mock_update,
+    mock_context,
 ):
     """Тестирует, что handle_dmarket_arbitrage правильно передает разные режимы."""
     # Настраиваем тестовые данные

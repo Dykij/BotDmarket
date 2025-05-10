@@ -1,5 +1,4 @@
-"""
-BotDmarket package initialization.
+"""BotDmarket package initialization.
 Contains DMarket API integration and Telegram bot functionality.
 """
 

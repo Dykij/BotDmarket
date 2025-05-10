@@ -2,24 +2,32 @@ version: '3.8'
 
 services:
   bot:
-    build: .
-    container_name: dmarket_bot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dmarket-bot
     restart: unless-stopped
     volumes:
-      # Для сохранения логов и аналитики между перезапусками
+      - ./data:/app/data
       - ./logs:/app/logs
-      - ./error_analytics.json:/app/error_analytics.json
+      - ./.env:/app/.env
     environment:
-      # Задайте переменные окружения здесь или через .env файл
-      - DMARKET_PUBLIC_KEY=${DMARKET_PUBLIC_KEY}
-      - DMARKET_SECRET_KEY=${DMARKET_SECRET_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      # Дополнительные настройки если нужно
-      - LOG_LEVEL=INFO
-      - ENABLE_AUTO_ARBITRAGE=false
-    networks:
-      - bot_network
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    command: python -m src
 
-networks:
-  bot_network:
-    driver: bridge
+  # Optional MongoDB service for data storage if needed
+  # mongodb:
+  #   image: mongo:latest
+  #   container_name: mongodb
+  #   restart: unless-stopped
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=admin
+  #     - MONGO_INITDB_ROOT_PASSWORD=password
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   ports:
+  #     - "27017:27017"
+
+# volumes:
+#   mongodb_data:

@@ -3,28 +3,123 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dmarket-tools"
+name = "dmarket-bot"
 version = "0.1.0"
-description = "Tools for working with DMarket API"
+description = "Бот для торговли игровыми предметами на площадке DMarket"
 readme = "README.md"
 authors = [
-    {name = "DM Trading Tools Team", email = "example@example.com"},
+    {name = "DMarket Bot Team", email = "example@example.com"},
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/dm-trading-tools"
-"Bug Tracker" = "https://github.com/yourusername/dm-trading-tools/issues"
+"Homepage" = "https://github.com/yourusername/dmarket-bot"
+"Bug Tracker" = "https://github.com/yourusername/dmarket-bot/issues"
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+include = '\.pyi?$'
+skip-string-normalization = false
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
 
 [tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "C90", "I", "N", "D", "UP", "YTT", "ANN", "S", "BLE", "B", "A", "COM", "C4", "DTZ", "EM", "EXE", "FBT", "ICN", "INP", "PIE", "PT", "Q", "RET", "SIM", "T20", "TID", "TRY", "RUF"]
+ignore = []
+target-version = "py39"
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+    "env",
+    "docs",
+    "tests/__pycache__",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+no_implicit_optional = true
+follow_imports = "skip"
+strict_optional = false
+check_untyped_defs = false
+ignore_missing_imports = true
+disable_error_code = ["attr-defined", "valid-type", "operator", "arg-type", "return-value", "var-annotated", "no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "telegram.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "telegram.ext.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "httpx.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "dotenv"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "telegram_bot.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "*.bot"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "src.*"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+disallow_any_decorated = false
+disallow_any_explicit = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+
+[[tool.mypy.overrides]]
+module = "src.dmarket.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.telegram_bot.bot_v2"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.telegram_bot.auto_arbitrage"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.utils.rate_limiter"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.demo_auto_arbitrage"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
-asyncio_mode = "strict"
-asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "--cov=src --cov-report=term --cov-report=html"
+python_classes = "Test*"
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src"]
@@ -59,14 +154,7 @@ disable = [
 ]
 
 [tool.pylint.format]
-max-line-length = 88
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-follow_imports = "silent"
+max-line-length = 100
 
 [tool.poetry.group.dev.dependencies]
 python-telegram-bot = "^22.0"

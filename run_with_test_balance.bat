@@ -1,12 +1,52 @@
 @echo off
-REM Run the bot with test balance mode enabled
+color 0A
+setlocal EnableDelayedExpansion
 
-echo Setting test mode environment variables...
-set DMARKET_TEST_MODE=true
-set DMARKET_FIXED_BALANCE=5.00
+echo ==========================================
+echo   DMarket Bot - ДЕМО РЕЖИМ (тестовый баланс)
+echo ==========================================
+echo.
+echo Этот режим позволяет запустить бота без действующих API ключей DMarket.
+echo Будет использоваться виртуальный баланс для демонстрации функций.
+echo.
 
-echo Running bot with test balance $5.00...
-python run.py
+:: Устанавливаем переменную окружения для тестового режима
+set TEST_MODE=1
+set TEST_BALANCE=100.00
 
-echo Done.
-pause 
+:: Проверяем наличие .env файла
+if not exist .env (
+    echo .env файл не найден. Создаю новый...
+    python create_env_file.py
+)
+
+echo.
+echo Для продолжения нажмите любую клавишу или Ctrl+C для отмены...
+pause > nul
+
+:: Активируем виртуальное окружение, если оно есть
+if exist venv\Scripts\activate.bat (
+    echo Активация виртуального окружения venv...
+    call venv\Scripts\activate.bat
+) else if exist .venv\Scripts\activate.bat (
+    echo Активация виртуального окружения .venv...
+    call .venv\Scripts\activate.bat
+) else (
+    echo Виртуальное окружение не найдено. Используется системный Python.
+)
+
+:: Запускаем скрипт тестового баланса
+echo Применение патча тестового баланса...
+python test_balance.py --test-mode
+
+:: Запускаем бота
+echo Запуск бота в демо-режиме с тестовым балансом $%TEST_BALANCE%...
+echo Для остановки нажмите Ctrl+C
+python run.py --test-mode
+
+:: Если бот завершится, ждем ввода пользователя перед выходом
+echo.
+echo Бот остановлен. Нажмите любую клавишу для выхода...
+pause > nul
+
+endlocal 

@@ -110,7 +110,7 @@ async def main():
         public_key=public_key,
         secret_key=secret_key
     )
-      try:
+     try:
         logger.info("Получаем баланс...")
         logger.info(f"API URL: {api.api_url}")
         logger.info(f"Public Key: {public_key[:10]}... (длина: {len(public_key)})")

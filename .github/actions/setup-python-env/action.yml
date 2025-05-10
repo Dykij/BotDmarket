@@ -7,7 +7,7 @@ inputs:
     required: false
     default: '3.11'
   install-poetry:
-    description: 'Whether to install and use Poetry'
+    description: 'Whether to install and use Poetry (set to true if your project uses Poetry for dependency management)'
     required: false
     default: 'false'
   install-dev-deps:
@@ -19,6 +19,11 @@ inputs:
     required: false
     default: 'true'
 
+outputs:
+  venv-path:
+    description: 'Path to the Poetry virtual environment if Poetry is used'
+    value: ${{ steps.set-venv-path.outputs.venv-path }}
+
 runs:
   using: "composite"
   steps:
@@ -28,20 +33,19 @@ runs:
         python-version: ${{ inputs.python-version }}
         cache: 'pip'
     
+    - name: Check Python version
+      shell: bash
+      run: |
+        echo "Установлена версия Python:"
+        python --version
+    
     - name: Install Poetry
       if: inputs.install-poetry == 'true'
-      shell: bash
-      run: |
-        python -m pip install poetry
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-        poetry --version || echo "Poetry installation may have issues"
-        
-    - name: Configure Poetry
-      if: inputs.install-poetry == 'true'
-      shell: bash
-      run: |
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
         
     - name: Set up Poetry cache
       if: inputs.install-poetry == 'true'
@@ -58,41 +62,63 @@ runs:
       if: inputs.install-poetry == 'true'
       shell: bash
       run: |
-        POETRY_VERSION=$(poetry --version | cut -d' ' -f3)
-        echo "Poetry version: $POETRY_VERSION"
+        echo "Начинаю установку зависимостей через Poetry"
+        poetry --version
         
-        if [ "$(echo $POETRY_VERSION | cut -d'.' -f1)" -ge "1" ] && [ "$(echo $POETRY_VERSION | cut -d'.' -f2)" -ge "2" ]; then
-          if [ "${{ inputs.install-dev-deps }}" == "false" ]; then
-            poetry install --no-interaction --without dev
-          else
-            poetry install --no-interaction
-          fi
+        if [ "${{ inputs.install-dev-deps }}" == "false" ]; then
+          echo "Установка без зависимостей для разработки"
+          poetry install --no-interaction --without dev
         else
-          if [ "${{ inputs.install-dev-deps }}" == "false" ]; then
-            poetry install --no-interaction --no-dev
-          else
-            poetry install --no-interaction
-          fi
+          echo "Установка со всеми зависимостями"
+          poetry install --no-interaction
         fi
+        
+        echo "Установка зависимостей через Poetry завершена"
+        
+    - name: Set virtual environment path
+      if: inputs.install-poetry == 'true'
+      id: set-venv-path
+      shell: bash
+      run: |
+        VENV_PATH=$(poetry env info --path)
+        echo "venv-path=$VENV_PATH" >> $GITHUB_OUTPUT
+        echo "Путь к виртуальному окружению Poetry: $VENV_PATH"
         
     - name: Install dependencies with pip
       if: inputs.install-poetry != 'true'
       shell: bash
       run: |
+        echo "Проверка наличия файлов зависимостей"
+        if [ ! -f requirements.txt ] && [ ! -f pyproject.toml ]; then
+          echo "Не найдены requirements.txt или pyproject.toml. Пожалуйста, предоставьте один из них."
+          exit 1
+        fi
+        
+        echo "Начинаю установку зависимостей через pip"
         python -m pip install --upgrade pip
+        
         if [ -f requirements.txt ]; then
+          echo "Установка из requirements.txt"
           pip install -r requirements.txt
         elif [ -f pyproject.toml ] && [ ! -f poetry.lock ]; then
+          echo "Установка из pyproject.toml"
+          pip install .
+        elif [ -f pyproject.toml ] && [ -f poetry.lock ]; then
+          echo "⚠️ Обнаружен poetry.lock, но Poetry не используется. Рекомендуется установить install-poetry: true"
           pip install .
         fi
         
         if [ "${{ inputs.install-dev-deps }}" == "true" ]; then
           if [ -f requirements-dev.txt ]; then
+            echo "Установка зависимостей для разработки из requirements-dev.txt"
             pip install -r requirements-dev.txt
           else
+            echo "Установка стандартных зависимостей для разработки"
             pip install pytest pytest-cov pytest-asyncio pytest-mock black ruff mypy
           fi
         fi
+        
+        echo "Установка зависимостей через pip завершена"
         
     - name: Create .env file from example
       if: inputs.create-env-file == 'true'
@@ -100,11 +126,16 @@ runs:
       run: |
         if [ -f .env.example ] && [ ! -f .env ]; then
           cp .env.example .env
-          echo "Created .env file from .env.example"
+          echo "Создан файл .env из .env.example"
+        elif [ -f .env ]; then
+          echo "Файл .env уже существует, пропускаю создание"
+        elif [ ! -f .env.example ]; then
+          echo "Файл .env.example не найден, пропускаю создание .env"
         fi
         
     - name: Set PYTHONPATH
       shell: bash
       run: |
+        echo "Настройка PYTHONPATH для включения рабочей директории"
         echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
         export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH 

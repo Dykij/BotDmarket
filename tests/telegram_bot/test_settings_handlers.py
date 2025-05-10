@@ -513,10 +513,6 @@ async def test_settings_callback_api_keys(
         message_text = ""
 
     # Проверяем, что показаны маскированные ключи
-    assert (
-        "abcde...67890" in message_text
-    )  # Показаны первые 5 и последние 5 символов ключа
-    assert (
-        "sec...456" in message_text
-    )  # Показаны первые 3 и последние 3 символа секрета
+    assert "abcde...67890" in message_text  # Показаны первые 5 и последние 5 символов ключа
+    assert "sec...456" in message_text  # Показаны первые 3 и последние 3 символа секрета
     assert call_args.kwargs.get("reply_markup") == mock_keyboard
