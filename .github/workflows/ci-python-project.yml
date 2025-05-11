@@ -1,0 +1,236 @@
+name: Python CI/CD Pipeline
+
+# Описание: Этот рабочий процесс выполняет тестирование, сборку и развертывание Python проекта
+
+# Триггеры для запуска рабочего процесса
+on:
+  push:
+    branches: [main, develop]
+    paths: ['src/**', 'tests/**', 'pyproject.toml', 'requirements.txt']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Еженедельный запуск в полночь по воскресеньям
+  workflow_dispatch:  # Разрешить ручной запуск
+
+# Управление параллелизмом для предотвращения одновременных запусков
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ограничение прав доступа GITHUB_TOKEN
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+# Переменные окружения на уровне рабочего процесса
+env:
+  PYTHON_VERSION: '3.11'
+  USE_POETRY: 'true'
+
+jobs:
+  # Задание 1: Проверка кода и тестирование с матричной стратегией
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+      fail-fast: false
+      max-parallel: 2  # Ограничение параллельных заданий
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ matrix.python-version }}
+          install-poetry: ${{ env.USE_POETRY }}
+          install-dev-deps: 'true'
+      
+      - name: Lint with Ruff
+        run: |
+          if [ "${{ env.USE_POETRY }}" == "true" ]; then
+            poetry run ruff check . --output-format=github
+          else
+            python -m ruff check . --output-format=github
+          fi
+      
+      - name: Type check with MyPy
+        run: |
+          if [ "${{ env.USE_POETRY }}" == "true" ]; then
+            poetry run mypy .
+          else
+            python -m mypy .
+          fi
+      
+      - name: Run tests with pytest
+        run: |
+          if [ "${{ env.USE_POETRY }}" == "true" ]; then
+            poetry run pytest -xvs --cov=src --cov-report=xml
+          else
+            python -m pytest -xvs --cov=src --cov-report=xml
+          fi
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Отладочная информация
+        run: |
+          echo "Тестирование на Python ${{ matrix.python-version }}"
+          echo "Событие: ${{ github.event_name }}"
+        timeout-minutes: 1
+
+  # Задание 2: Сборка и публикация документации
+  build-docs:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          install-poetry: ${{ env.USE_POETRY }}
+          install-dev-deps: 'true'
+      
+      - name: Build documentation
+        run: |
+          if [ -d "docs" ]; then
+            cd docs
+            if [ "${{ env.USE_POETRY }}" == "true" ]; then
+              poetry run sphinx-build -b html source build/html
+            else
+              pip install sphinx sphinx_rtd_theme
+              python -m sphinx.cmd.build -b html source build/html
+            fi
+          else
+            echo "Директория docs не найдена, пропускаем сборку документации"
+            exit 0
+          fi
+      
+      - name: Archive documentation artifacts
+        if: success() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/build/html
+          retention-days: 7
+
+  # Задание 3: Развертывание документации (только для main)
+  deploy-docs:
+    needs: build-docs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: write  # Повышаем права для публикации на GitHub Pages
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation
+          path: docs/build/html
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/build/html
+
+  # Задание 4: Сборка и публикация пакета (только для тегов)
+  build-package:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python environment
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          install-poetry: ${{ env.USE_POETRY }}
+          install-dev-deps: 'false'
+      
+      - name: Build package
+        run: |
+          if [ "${{ env.USE_POETRY }}" == "true" ]; then
+            poetry build
+          else
+            pip install build
+            python -m build
+          fi
+      
+      - name: Archive package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-dist
+          path: |
+            dist/
+            build/
+          retention-days: 7
+      
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags')
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: |
+          if [ -z "$TWINE_USERNAME" ] || [ -z "$TWINE_PASSWORD" ]; then
+            echo "::warning::Секреты PyPI не настроены, пропуск публикации"
+            exit 0
+          fi
+          
+          pip install twine
+          twine upload dist/*
+      
+  # Задание 5: Проверка состояния репозитория и аналитика
+  repo-analytics:
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Collect repository metrics
+        run: |
+          echo "Собираем аналитику репозитория..."
+          echo "SHA: ${{ github.sha }}"
+          echo "Ветка: ${{ github.ref }}"
+          echo "Инициировано: ${{ github.actor }}"
+          
+          # Подсчет файлов разных типов
+          echo "Количество Python файлов: $(find . -name "*.py" | wc -l)"
+          
+          # Оценка размера кодовой базы
+          echo "Общее количество строк Python кода:"
+          find . -name "*.py" -exec cat {} \; | wc -l
+          
+          # Обработка данных из тестов если они выполнились
+          if [ -f coverage.xml ]; then
+            echo "Данные о покрытии доступны:"
+            grep -A1 "<coverage" coverage.xml
+          fi
+      
+      - name: Notify on completion
+        if: always()
+        run: |
+          echo "CI pipeline завершен со статусом: ${{ job.status }}"
+          # Здесь может быть интеграция с Telegram-ботом или другими сервисами оповещения
+          # путем вызова специального API-endpoint или запуска скрипта 

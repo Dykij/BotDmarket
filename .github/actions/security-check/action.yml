@@ -1,0 +1,214 @@
+name: 'Security Check'
+description: 'Проверяет код и зависимости на наличие уязвимостей безопасности'
+
+inputs:
+  python-version:
+    description: 'Версия Python для использования'
+    required: false
+    default: '3.11'
+  scan-dependencies:
+    description: 'Проверять зависимости на уязвимости'
+    required: false
+    default: 'true'
+  scan-code:
+    description: 'Сканировать код на уязвимости'
+    required: false
+    default: 'true'
+  src-directory:
+    description: 'Директория с исходным кодом для сканирования'
+    required: false
+    default: './src'
+  fail-on-high:
+    description: 'Завершить с ошибкой при обнаружении критических уязвимостей'
+    required: false
+    default: 'false'
+  generate-report:
+    description: 'Генерировать отчет о безопасности'
+    required: false
+    default: 'true'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+    
+    - name: Install security tools
+      shell: bash
+      run: |
+        echo "Установка инструментов для анализа безопасности..."
+        python -m pip install --upgrade pip
+        
+        # Установка всех необходимых инструментов безопасности
+        pip install safety bandit pip-audit
+        
+        echo "✅ Инструменты для анализа безопасности установлены"
+    
+    - name: Check for dependency files
+      id: check-deps
+      shell: bash
+      run: |
+        echo "Проверка наличия файлов зависимостей..."
+        
+        if [ -f "requirements.txt" ]; then
+          echo "has_requirements=true" >> $GITHUB_OUTPUT
+          echo "✅ Найден файл requirements.txt"
+        else
+          echo "has_requirements=false" >> $GITHUB_OUTPUT
+          echo "⚠️ Файл requirements.txt не найден"
+        fi
+        
+        if [ -f "poetry.lock" ]; then
+          echo "has_poetry=true" >> $GITHUB_OUTPUT
+          echo "✅ Найден файл poetry.lock"
+        else
+          echo "has_poetry=false" >> $GITHUB_OUTPUT
+          echo "⚠️ Файл poetry.lock не найден"
+        fi
+    
+    - name: Export dependencies from Poetry
+      if: steps.check-deps.outputs.has_poetry == 'true' && inputs.scan-dependencies == 'true'
+      shell: bash
+      run: |
+        echo "Экспорт зависимостей из poetry.lock..."
+        pip install poetry
+        poetry export -f requirements.txt --output requirements-export.txt
+        echo "✅ Зависимости экспортированы в requirements-export.txt"
+    
+    - name: Run Safety check
+      if: inputs.scan-dependencies == 'true'
+      shell: bash
+      run: |
+        echo "Проверка зависимостей на уязвимости с помощью Safety..."
+        mkdir -p security-reports
+        
+        if [ "${{ steps.check-deps.outputs.has_requirements }}" == "true" ]; then
+          SAFETY_EXIT_CODE=0
+          safety check -r requirements.txt --output json > security-reports/safety-requirements.json || SAFETY_EXIT_CODE=$?
+          safety check -r requirements.txt --output text > security-reports/safety-requirements.txt || true
+          
+          if [ $SAFETY_EXIT_CODE -ne 0 ]; then
+            echo "⚠️ Safety обнаружил уязвимости в requirements.txt"
+            if [ "${{ inputs.fail-on-high }}" == "true" ]; then
+              exit $SAFETY_EXIT_CODE
+            fi
+          else
+            echo "✅ Safety не обнаружил уязвимостей в requirements.txt"
+          fi
+        fi
+        
+        if [ "${{ steps.check-deps.outputs.has_poetry }}" == "true" ]; then
+          SAFETY_EXIT_CODE=0
+          safety check -r requirements-export.txt --output json > security-reports/safety-poetry.json || SAFETY_EXIT_CODE=$?
+          safety check -r requirements-export.txt --output text > security-reports/safety-poetry.txt || true
+          
+          if [ $SAFETY_EXIT_CODE -ne 0 ]; then
+            echo "⚠️ Safety обнаружил уязвимости в зависимостях Poetry"
+            if [ "${{ inputs.fail-on-high }}" == "true" ]; then
+              exit $SAFETY_EXIT_CODE
+            fi
+          else
+            echo "✅ Safety не обнаружил уязвимостей в зависимостях Poetry"
+          fi
+        fi
+        
+        if [ "${{ steps.check-deps.outputs.has_requirements }}" != "true" ] && [ "${{ steps.check-deps.outputs.has_poetry }}" != "true" ]; then
+          echo "⚠️ Файлы зависимостей не найдены, пропускаю проверку Safety"
+        fi
+    
+    - name: Run pip-audit check
+      if: inputs.scan-dependencies == 'true'
+      shell: bash
+      run: |
+        echo "Проверка зависимостей с помощью pip-audit..."
+        mkdir -p security-reports
+        
+        if [ "${{ steps.check-deps.outputs.has_requirements }}" == "true" ]; then
+          pip-audit -r requirements.txt -o json > security-reports/pip-audit-requirements.json || echo "⚠️ pip-audit обнаружил уязвимости в requirements.txt"
+        fi
+        
+        if [ "${{ steps.check-deps.outputs.has_poetry }}" == "true" ]; then
+          pip-audit -r requirements-export.txt -o json > security-reports/pip-audit-poetry.json || echo "⚠️ pip-audit обнаружил уязвимости в зависимостях Poetry"
+        fi
+        
+        if [ "${{ steps.check-deps.outputs.has_requirements }}" != "true" ] && [ "${{ steps.check-deps.outputs.has_poetry }}" != "true" ]; then
+          echo "⚠️ Файлы зависимостей не найдены, пропускаю проверку pip-audit"
+        fi
+    
+    - name: Run Bandit code scan
+      if: inputs.scan-code == 'true'
+      shell: bash
+      run: |
+        echo "Сканирование кода на уязвимости с помощью Bandit..."
+        mkdir -p security-reports
+        
+        if [ -d "${{ inputs.src-directory }}" ]; then
+          BANDIT_EXIT_CODE=0
+          bandit -r ${{ inputs.src-directory }} -f json -o security-reports/bandit-results.json || BANDIT_EXIT_CODE=$?
+          bandit -r ${{ inputs.src-directory }} -f txt -o security-reports/bandit-results.txt || true
+          
+          if [ $BANDIT_EXIT_CODE -ne 0 ]; then
+            echo "⚠️ Bandit обнаружил потенциальные уязвимости в коде"
+            if [ "${{ inputs.fail-on-high }}" == "true" ]; then
+              exit $BANDIT_EXIT_CODE
+            fi
+          else
+            echo "✅ Bandit не обнаружил уязвимостей в коде"
+          fi
+        else
+          echo "⚠️ Директория ${{ inputs.src-directory }} не найдена, пропускаю сканирование кода"
+        fi
+    
+    - name: Generate security report
+      if: inputs.generate-report == 'true'
+      shell: bash
+      run: |
+        echo "Генерация отчета о безопасности..."
+        mkdir -p security-reports
+        
+        # Создаем сводный отчет в Markdown
+        echo "# 🔒 Отчет о безопасности" > security-reports/security-summary.md
+        echo "" >> security-reports/security-summary.md
+        echo "Дата проверки: $(date)" >> security-reports/security-summary.md
+        echo "" >> security-reports/security-summary.md
+        
+        echo "## Проверка зависимостей" >> security-reports/security-summary.md
+        echo "" >> security-reports/security-summary.md
+        
+        # Safety результаты
+        echo "### Safety Check" >> security-reports/security-summary.md
+        if [ -f security-reports/safety-requirements.json ] || [ -f security-reports/safety-poetry.json ]; then
+          echo "✅ Проверка зависимостей выполнена" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          
+          if grep -q "\"vulnerabilities\": \[\]" security-reports/safety-*.json 2>/dev/null; then
+            echo "✅ Уязвимостей не обнаружено" >> security-reports/security-summary.md
+          else
+            echo "⚠️ Обнаружены потенциальные уязвимости в зависимостях" >> security-reports/security-summary.md
+          fi
+        else
+          echo "⚠️ Файлы зависимостей не найдены, проверка пропущена" >> security-reports/security-summary.md
+        fi
+        echo "" >> security-reports/security-summary.md
+        
+        # Bandit результаты
+        echo "## Сканирование кода" >> security-reports/security-summary.md
+        echo "" >> security-reports/security-summary.md
+        echo "### Bandit Scan" >> security-reports/security-summary.md
+        if [ -f security-reports/bandit-results.json ]; then
+          echo "✅ Сканирование кода выполнено" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          
+          if grep -q "\"metrics\": \{\}, \"results\": \[\]" security-reports/bandit-results.json; then
+            echo "✅ Уязвимостей не обнаружено" >> security-reports/security-summary.md
+          else
+            echo "⚠️ Обнаружены потенциальные уязвимости в коде" >> security-reports/security-summary.md
+          fi
+        else
+          echo "⚠️ Результаты сканирования не найдены" >> security-reports/security-summary.md
+        fi
+        
+        echo "✅ Сводный отчет о безопасности сгенерирован: security-reports/security-summary.md" 

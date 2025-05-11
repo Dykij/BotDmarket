@@ -5,6 +5,7 @@
 1. **Согласованный подход к установке и запуску инструментов**
    - Используйте либо Poetry во всех workflow, либо прямые вызовы через pip/python
    - Избегайте смешивания различных подходов к управлению зависимостями в разных workflow
+   - Для повторяющихся задач создавайте композитные действия в `.github/actions/`
 
 2. **Тестирование workflow локально**
    - Перед отправкой на GitHub тестируйте workflow локально с помощью [act](https://github.com/nektos/act)
@@ -14,11 +15,35 @@
    - Всегда добавляйте проверку наличия необходимых файлов или условий перед выполнением критических команд
    - Используйте условия и обработку ошибок в shell-скриптах
 
+4. **Безопасность и оптимизация**
+   - Используйте `concurrency` для предотвращения параллельных запусков одинаковых workflow
+   - Ограничивайте разрешения с помощью `permissions`
+   - Используйте последние версии официальных действий (v4+ где возможно)
+
 ## Специфические рекомендации для Python-проектов
 
-### Управление зависимостями
+### Настройка Python-окружения
+
+Используйте композитное действие `.github/actions/setup-python-env`:
 
 ```yaml
+- name: Setup Python environment
+  uses: ./.github/actions/setup-python-env
+  with:
+    python-version: '3.11'
+    install-poetry: 'true'
+    install-dev-deps: 'true'
+```
+
+Если нужно настроить вручную:
+
+```yaml
+- name: Set up Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+    cache: 'pip'
+
 - name: Install dependencies
   run: |
     python -m pip install --upgrade pip
@@ -41,6 +66,12 @@
     # Убедитесь, что Ruff установлен
     pip install ruff==0.3.0
     python -m ruff check . --output-format=github
+    
+- name: Type check with MyPy
+  run: |
+    # Убедитесь, что MyPy установлен
+    pip install mypy
+    python -m mypy .
 ```
 
 ### Тестирование
@@ -48,13 +79,19 @@
 ```yaml
 - name: Set up PYTHONPATH
   run: |
-    export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
+    echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
     # Для Windows:
     # echo "PYTHONPATH=$env:GITHUB_WORKSPACE;$env:PYTHONPATH" >> $env:GITHUB_ENV
 
 - name: Run tests
   run: |
-    pytest -xvs
+    pytest -xvs --cov=src --cov-report=xml
+    
+- name: Upload coverage
+  uses: codecov/codecov-action@v4
+  with:
+    file: ./coverage.xml
+    fail_ci_if_error: false
 ```
 
 ## Безопасность и обработка секретов
@@ -67,7 +104,15 @@
        API_KEY: ${{ secrets.API_KEY || 'test_key' }}
      ```
 
-2. **Сканирование зависимостей**
+2. **Ограничивайте разрешения**
+   ```yaml
+   permissions:
+     contents: read  # Только чтение содержимого репозитория
+     issues: write   # Разрешение на создание issues
+     # Другие разрешения по необходимости
+   ```
+
+3. **Сканирование зависимостей**
    - Регулярно проверяйте зависимости на наличие уязвимостей
    - Используйте GitHub Dependabot или специализированные инструменты
 
@@ -78,11 +123,22 @@
    - name: Set up cache
      uses: actions/cache@v4
      with:
-       path: .venv
-       key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+       path: |
+         ~/.cache/pip
+         .venv
+       key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt', '**/poetry.lock') }}
+       restore-keys: |
+         ${{ runner.os }}-python-${{ matrix.python-version }}-
    ```
 
-2. **Условное выполнение задач**
+2. **Управление параллелизмом**
+   ```yaml
+   concurrency:
+     group: ${{ github.workflow }}-${{ github.ref }}
+     cancel-in-progress: true
+   ```
+
+3. **Условное выполнение задач**
    ```yaml
    - name: Run intensive task
      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -134,4 +190,33 @@
      env:
        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-   ``` 
+   ```
+
+## Шаблоны для типичных сценариев
+
+### Матричная стратегия тестирования
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ matrix.python-version }}
+```
+
+### Выполнение по расписанию
+
+```yaml
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Еженедельно в полночь по воскресеньям
+  workflow_dispatch:  # Разрешить ручной запуск
+``` 

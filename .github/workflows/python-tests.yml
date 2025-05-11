@@ -17,10 +17,24 @@ on:
       - '.github/workflows/python-tests.yml'
   workflow_dispatch:  # Allow manual triggering
 
+# Управление параллелизмом для предотвращения одновременных запусков
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ограничение прав доступа GITHUB_TOKEN
+permissions:
+  contents: read
+  checks: write  # Для публикации результатов тестов
+
 jobs:
   test:
     name: Run Python Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11']
+      fail-fast: false
     
     steps:
       - name: Checkout code
@@ -32,13 +46,10 @@ jobs:
         run: |
           if [ -d ".github/actions/setup-python-env" ] && [ -f ".github/actions/setup-python-env/action.yml" ]; then
             echo "action_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Композитный экшен найден"
           else
-            echo "::warning::Composite action not found at .github/actions/setup-python-env, using fallback setup"
+            echo "::warning::Композитный экшен не найден в .github/actions/setup-python-env, используем резервную настройку"
             echo "action_exists=false" >> $GITHUB_OUTPUT
-            
-            # Вывод списка содержимого для диагностики
-            ls -la .github || echo "No .github directory"
-            ls -la .github/actions || echo "No .github/actions directory"
           fi
       
       # Используем наш composite action, если он доступен
@@ -46,7 +57,7 @@ jobs:
         if: steps.check-action.outputs.action_exists == 'true'
         uses: ./.github/actions/setup-python-env
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           install-poetry: ${{ hashFiles('poetry.lock') != '' && 'true' || 'false' }}
           install-dev-deps: 'true'
           create-env-file: 'true'
@@ -56,7 +67,7 @@ jobs:
         if: steps.check-action.outputs.action_exists != 'true'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
       
       # Резервная установка зависимостей, если composite action недоступен
@@ -65,139 +76,51 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           
-          # Установка зависимостей
-          if [ -f requirements.txt ]; then
+          # Определение метода управления зависимостями
+          if [ -f poetry.lock ]; then
+            echo "✅ Обнаружен poetry.lock, устанавливаем Poetry..."
+            curl -sSL https://install.python-poetry.org | python3 -
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            export PATH="$HOME/.local/bin:$PATH"
+            
+            poetry config virtualenvs.create true
+            poetry config virtualenvs.in-project true
+            poetry install --no-interaction
+            echo "POETRY_AVAILABLE=true" >> $GITHUB_ENV
+          elif [ -f requirements.txt ]; then
+            echo "✅ Установка из requirements.txt..."
             pip install -r requirements.txt
+            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           elif [ -f pyproject.toml ]; then
-            if [ -f poetry.lock ]; then
-              pip install poetry
-              poetry install --no-interaction
-            else
-              pip install .
-            fi
+            echo "✅ Установка из pyproject.toml..."
+            pip install .
+            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
+          else
+            echo "⚠️ Не найдены файлы зависимостей"
+            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           fi
           
           # Установка инструментов для тестирования
+          echo "✅ Установка инструментов для тестирования..."
           pip install pytest pytest-asyncio pytest-cov pytest-mock
           
           # Создание .env файла
           if [ -f .env.example ] && [ ! -f .env ]; then
+            echo "✅ Создание .env файла из примера..."
             cp .env.example .env
           fi
           
           # Настройка PYTHONPATH
+          echo "✅ Настройка PYTHONPATH..."
           echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
-          export PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH
       
-      - name: Check for Poetry vs pip installation
-        id: check-poetry
+      - name: Run tests with pytest
         run: |
-          if [ -f poetry.lock ]; then
-            echo "uses_poetry=true" >> $GITHUB_OUTPUT
+          echo "🧪 Запуск тестов..."
+          if [ "${{ env.POETRY_AVAILABLE }}" == "true" ] || [ -f poetry.lock ]; then
+            poetry run python -m pytest -xvs --cov=src --cov-report=xml
           else
-            echo "uses_poetry=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Check directory structure
-        id: check-structure
-        run: |
-          # Проверка директорий
-          if [ ! -d "tests" ]; then
-            echo "tests_dir=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Warning: tests directory not found"
-          else
-            echo "tests_dir=true" >> $GITHUB_OUTPUT
-          fi
-          
-          if [ ! -d "tests/dmarket" ]; then
-            echo "dmarket_tests_dir=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Warning: tests/dmarket directory not found"
-          else
-            echo "dmarket_tests_dir=true" >> $GITHUB_OUTPUT
-          fi
-          
-          if [ ! -d "tests/telegram_bot" ]; then
-            echo "telegram_tests_dir=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Warning: tests/telegram_bot directory not found"
-          else
-            echo "telegram_tests_dir=true" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Check for simplified test files
-        id: check-tests
-        if: steps.check-structure.outputs.dmarket_tests_dir == 'true' && steps.check-structure.outputs.telegram_tests_dir == 'true'
-        run: |
-          DMARKET_API_SIMPLIFIED=0
-          TELEGRAM_SCANNER_SIMPLIFIED=0
-          
-          if [ -f tests/dmarket/test_dmarket_api_simplified.py ]; then
-            DMARKET_API_SIMPLIFIED=1
-          fi
-          
-          if [ -f tests/telegram_bot/test_arbitrage_scanner_simplified.py ]; then
-            TELEGRAM_SCANNER_SIMPLIFIED=1
-          fi
-          
-          if [ $DMARKET_API_SIMPLIFIED -eq 1 ] && [ $TELEGRAM_SCANNER_SIMPLIFIED -eq 1 ]; then
-            echo "simplified_tests=true" >> $GITHUB_OUTPUT
-          else
-            echo "simplified_tests=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Simplified test files not found, will run alternative tests"
-          fi
-      
-      - name: Run simplified test suite
-        if: steps.check-structure.outputs.tests_dir == 'true' && steps.check-tests.outputs.simplified_tests == 'true'
-        run: |
-          echo "🧪 Running simplified tests..."
-          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
-            poetry run python -m pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v || echo "::warning::Some simplified tests failed but we'll continue"
-          else
-            python -m pytest tests/dmarket/test_dmarket_api_simplified.py tests/telegram_bot/test_arbitrage_scanner_simplified.py -v || echo "::warning::Some simplified tests failed but we'll continue"
-          fi
-        env:
-          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
-          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
-      
-      - name: Run fallback tests
-        if: steps.check-structure.outputs.tests_dir == 'true' && (steps.check-tests.outputs.simplified_tests != 'true' || steps.check-structure.outputs.dmarket_tests_dir != 'true' || steps.check-structure.outputs.telegram_tests_dir != 'true')
-        run: |
-          # Найдем и запустим доступные тесты
-          echo "🔍 Searching for available tests..."
-          FOUND_FILES=$(find tests -name "test_*.py" | head -n 5)
-          
-          if [ -z "$FOUND_FILES" ]; then
-            echo "⚠️ No test files found in the tests directory"
-            echo "✅ Marking test step as successful to avoid blocking the pipeline"
-          else
-            echo "📋 Found test files:"
-            echo "$FOUND_FILES"
-            
-            if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
-              poetry run python -m pytest $FOUND_FILES -v || echo "::warning::Some tests failed but we'll continue"
-            else
-              python -m pytest $FOUND_FILES -v || echo "::warning::Some tests failed but we'll continue"
-            fi
-          fi
-        env:
-          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
-          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
-      
-      - name: Placeholder step when no tests directory
-        if: steps.check-structure.outputs.tests_dir == 'false'
-        run: |
-          echo "⚠️ No tests directory found!"
-          echo "✅ Marking test step as successful - please add tests to your repository"
-      
-      - name: Run coverage analysis
-        if: steps.check-structure.outputs.tests_dir == 'true'
-        run: |
-          echo "📊 Running coverage analysis..."
-          if [ "${{ steps.check-poetry.outputs.uses_poetry }}" == "true" ]; then
-            poetry run python -m pytest --cov=src --cov-report=xml --cov-report=term || echo "::warning::Coverage analysis had issues but we'll continue"
-          else
-            python -m pytest --cov=src --cov-report=xml --cov-report=term || echo "::warning::Coverage analysis had issues but we'll continue"
+            python -m pytest -xvs --cov=src --cov-report=xml
           fi
         env:
           DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
@@ -205,9 +128,30 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
       
       - name: Upload coverage report
-        if: steps.check-structure.outputs.tests_dir == 'true'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            .coverage
+            pytest-report.xml
+          retention-days: 7
+      
+      - name: Debug info
+        if: always()
+        run: |
+          echo "💻 Отладочная информация:"
+          echo "Python version: $(python --version)"
+          echo "System: $(uname -a)"
+          echo "Working directory: $(pwd)"
+          echo "SHA: ${{ github.sha }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"

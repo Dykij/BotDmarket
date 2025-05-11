@@ -1,0 +1,128 @@
+name: Python CI/CD Pipeline
+
+# Описание: Этот рабочий процесс выполняет тестирование, сборку и развертывание Python проекта
+
+# Триггеры для запуска рабочего процесса
+on:
+  push:
+    branches: [main, develop]
+    paths: ['src/**', 'tests/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0' # Еженедельный запуск в полночь по воскресеньям
+
+# Управление параллелизмом для предотвращения одновременных запусков
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ограничение прав доступа GITHUB_TOKEN
+permissions:
+  contents: read
+  issues: write
+
+# Переменные окружения на уровне рабочего процесса
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Задание 1: Тестирование с матричной стратегией
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+      max-parallel: 2 # Ограничение параллельных заданий
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установка Python ${{ matrix.python-version }}
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ matrix.python-version }}
+          install-poetry: 'true'
+      - name: Запуск тестов
+        run: |
+          poetry run pytest -xvs --cov=src --cov-report=xml
+      - name: Отладочная информация
+        run: |
+          echo "Тестирование на Python ${{ matrix.python-version }}"
+          echo "Событие: ${{ github.event_name }}"
+        timeout-minutes: 5
+
+  # Задание 2: Сборка документации
+  build-docs:
+    needs: test # Зависит от успешного выполнения тестов
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установка Python
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          install-poetry: 'true'
+      - name: Сборка документации
+        run: |
+          cd docs
+          poetry run sphinx-build -b html source build/html
+      - name: Сохранение артефактов
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: ./docs/build/html
+          retention-days: 5
+
+  # Задание 3: Развертывание на GitHub Pages
+  deploy-docs:
+    needs: build-docs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Развертывание только для main
+    permissions:
+      contents: write  # Повышенные права для деплоя
+    steps:
+      - uses: actions/checkout@v4
+      - name: Загрузка артефактов документации
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation
+          path: ./docs/build/html
+      - name: Развертывание на GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/build/html
+
+  # Задание 4: Автоматизация меток для issues
+  label-issues:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    steps:
+      - name: Добавление метки для новых issues
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['triage']
+            })
+
+  # Задание 5: Проверка состояния репозитория
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Вывод отладочной информации
+        run: |
+          echo "SHA: ${{ github.sha }}"
+          echo "Ветка: ${{ github.ref }}"
+          echo "Инициировано: ${{ github.actor }}"
+          # Специфичные для Python проверки
+          ls -la
+          if [ -f pyproject.toml ]; then
+            echo "Project uses pyproject.toml"
+          fi
+          if [ -f requirements.txt ]; then
+            echo "Project uses requirements.txt"
+          fi 

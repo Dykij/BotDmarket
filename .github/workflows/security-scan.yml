@@ -9,6 +9,19 @@ on:
     - cron: '0 0 * * 0'  # Run weekly on Sunday at 00:00 UTC
   workflow_dispatch:  # Allow manual triggering
 
+# Управление параллелизмом для предотвращения одновременных запусков
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ограничение прав доступа GITHUB_TOKEN
+permissions:
+  contents: read
+  security-events: write # Нужно для загрузки результатов анализа CodeQL
+
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
   dependency-review:
     name: Dependency Review
@@ -27,9 +40,7 @@ jobs:
   analyze:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,34 +55,31 @@ jobs:
         
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
 
-  dependency-check:
-    name: Dependency Check
+  security-check:
+    name: Security Check
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run Security Check
+        uses: ./.github/actions/security-check
         with:
-          python-version: '3.11'
-          cache: 'pip'
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install safety
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-          
-      - name: Run safety check
-        run: |
-          if [ -f requirements.txt ]; then
-            safety check -r requirements.txt --full-report
-          else
-            echo "requirements.txt не найден, пропускаю проверку зависимостей"
-            exit 0
-          fi 
+          python-version: ${{ env.PYTHON_VERSION }}
+          scan-dependencies: 'true'
+          scan-code: 'true'
+          src-directory: './src'
+          fail-on-high: 'false'
+          generate-report: 'true'
+      
+      - name: Upload security results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-results
+          path: security-reports/
+          retention-days: 7 

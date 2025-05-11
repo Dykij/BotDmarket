@@ -7,6 +7,19 @@ on:
     branches: [ main, master, develop ]
   workflow_dispatch:  # Allow manual triggering
 
+# Управление параллелизмом для предотвращения одновременных запусков
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ограничение прав доступа GITHUB_TOKEN
+permissions:
+  contents: read
+  checks: write  # Для публикации результатов проверок
+
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
   lint:
     name: Linting and Type Checking
@@ -15,54 +28,47 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Check for composite action
-        id: check-action
-        run: |
-          echo "Проверка наличия композитного экшена setup-python-env..."
-          if [ -d ".github/actions/setup-python-env" ]; then
-            echo "action_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ Композитный экшен найден"
-          else
-            echo "action_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Композитный экшен не найден, используем стандартную установку"
-          fi
-      
-      - name: Setup Python with composite action
-        if: steps.check-action.outputs.action_exists == 'true'
         uses: ./.github/actions/setup-python-env
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
           install-poetry: ${{ hashFiles('poetry.lock') != '' && 'true' || 'false' }}
           install-dev-deps: 'true'
           create-env-file: 'false'
+        continue-on-error: true
       
-      - name: Install dependencies manually
-        if: steps.check-action.outputs.action_exists != 'true'
+      - name: Fallback Python setup
+        if: ${{ failure() }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Fallback dependencies installation
+        if: ${{ failure() }}
         run: |
           echo "Установка зависимостей для линтинга..."
           python -m pip install --upgrade pip
           
           if [ -f poetry.lock ]; then
-            echo "Обнаружен poetry.lock, устанавливаем Poetry..."
+            echo "✅ Обнаружен poetry.lock, устанавливаем Poetry..."
             curl -sSL https://install.python-poetry.org | python3 -
             echo "$HOME/.local/bin" >> $GITHUB_PATH
             export PATH="$HOME/.local/bin:$PATH"
             
-            echo "Установка зависимостей через Poetry..."
             poetry config virtualenvs.create true
             poetry config virtualenvs.in-project true
             poetry install --no-interaction
             echo "POETRY_AVAILABLE=true" >> $GITHUB_ENV
           elif [ -f requirements.txt ]; then
+            echo "✅ Установка из requirements.txt..."
             pip install -r requirements.txt
             echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           elif [ -f pyproject.toml ]; then
+            echo "✅ Установка из pyproject.toml..."
             pip install .
+            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
+          else
+            echo "⚠️ Не найдены файлы зависимостей"
             echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           fi
           
@@ -83,9 +89,9 @@ jobs:
         run: |
           echo "Проверка стиля кода с помощью Ruff..."
           if [ -f poetry.lock ] && [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
-            poetry run ruff check . || echo "::warning::Ruff выявил проблемы стиля кода"
+            poetry run ruff check . --output-format=github || echo "::warning::Ruff выявил проблемы стиля кода"
           else
-            ruff check . || echo "::warning::Ruff выявил проблемы стиля кода"
+            ruff check . --output-format=github || echo "::warning::Ruff выявил проблемы стиля кода"
           fi
       
       - name: Run MyPy
@@ -96,9 +102,38 @@ jobs:
           else
             mypy . || echo "::warning::MyPy выявил проблемы с типами"
           fi
+      
+      - name: Generate code quality report
+        if: always()
+        run: |
+          echo "Генерация отчета о качестве кода..."
+          
+          # Создаем директорию для отчетов
+          mkdir -p reports
+          
+          # Сохраняем результаты проверок
+          if [ -f poetry.lock ] && [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
+            poetry run black . --check > reports/black-report.txt 2>&1 || true
+            poetry run ruff check . > reports/ruff-report.txt 2>&1 || true
+            poetry run mypy . > reports/mypy-report.txt 2>&1 || true
+          else
+            black . --check > reports/black-report.txt 2>&1 || true
+            ruff check . > reports/ruff-report.txt 2>&1 || true
+            mypy . > reports/mypy-report.txt 2>&1 || true
+          fi
+          
+          echo "✅ Отчеты о качестве кода сохранены"
+      
+      - name: Upload code quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: reports/
+          retention-days: 7
 
-  test:
-    name: Run Tests
+  security:
+    name: Security Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,84 +141,63 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
       
-      - name: Check for composite action
-        id: check-action
+      - name: Install security tools
         run: |
-          echo "Проверка наличия композитного экшена setup-python-env..."
-          if [ -d ".github/actions/setup-python-env" ]; then
-            echo "action_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ Композитный экшен найден"
-          else
-            echo "action_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Композитный экшен не найден, используем стандартную установку"
-          fi
-      
-      - name: Setup Python with composite action
-        if: steps.check-action.outputs.action_exists == 'true'
-        uses: ./.github/actions/setup-python-env
-        with:
-          python-version: '3.11'
-          install-poetry: ${{ hashFiles('poetry.lock') != '' && 'true' || 'false' }}
-          install-dev-deps: 'true'
-          create-env-file: 'true'
-      
-      - name: Install dependencies manually
-        if: steps.check-action.outputs.action_exists != 'true'
-        run: |
-          echo "Установка зависимостей для тестирования..."
+          echo "Установка инструментов для проверки безопасности..."
           python -m pip install --upgrade pip
-          
-          if [ -f poetry.lock ]; then
-            echo "Обнаружен poetry.lock, устанавливаем Poetry..."
-            curl -sSL https://install.python-poetry.org | python3 -
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
-            export PATH="$HOME/.local/bin:$PATH"
-            
-            echo "Установка зависимостей через Poetry..."
-            poetry config virtualenvs.create true
-            poetry config virtualenvs.in-project true
-            poetry install --no-interaction
-            echo "POETRY_AVAILABLE=true" >> $GITHUB_ENV
-          elif [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-            pip install pytest pytest-cov pytest-asyncio pytest-mock
-            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
-          elif [ -f pyproject.toml ]; then
-            pip install .
-            pip install pytest pytest-cov pytest-asyncio pytest-mock
-            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
-          fi
-          
-          # Создание .env файла для тестов, если нужно
-          if [ -f .env.example ] && [ ! -f .env ]; then
-            echo "Создание .env из .env.example для тестов..."
-            cp .env.example .env
-          fi
-          
-          echo "✅ Зависимости для тестирования установлены"
+          pip install safety bandit
+          echo "✅ Инструменты для проверки безопасности установлены"
       
-      - name: Run tests with coverage
+      - name: Check dependencies with Safety
         run: |
-          echo "Запуск тестов с анализом покрытия..."
-          if [ -f poetry.lock ] && [ "${{ env.POETRY_AVAILABLE }}" == "true" ]; then
-            poetry run pytest --cov=src --cov-report=xml --cov-report=term --cov-fail-under=50 || echo "::warning::Тесты покрытия имели проблемы или не достигли минимального уровня покрытия (50%)"
+          echo "Проверка зависимостей на уязвимости с помощью Safety..."
+          
+          if [ -f requirements.txt ]; then
+            safety check -r requirements.txt || echo "::warning::Safety обнаружил уязвимости в зависимостях"
+          elif [ -f poetry.lock ]; then
+            pip install poetry
+            poetry export -f requirements.txt --output requirements-export.txt
+            safety check -r requirements-export.txt || echo "::warning::Safety обнаружил уязвимости в зависимостях"
           else
-            pytest --cov=src --cov-report=xml --cov-report=term --cov-fail-under=50 || echo "::warning::Тесты покрытия имели проблемы или не достигли минимального уровня покрытия (50%)"
+            echo "::warning::Не найдены файлы зависимостей для проверки безопасности"
           fi
-        env:
-          DMARKET_PUBLIC_KEY: ${{ secrets.DMARKET_PUBLIC_KEY || 'test_public_key' }}
-          DMARKET_SECRET_KEY: ${{ secrets.DMARKET_SECRET_KEY || 'test_secret_key' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'test_token' }}
       
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Scan code with Bandit
+        run: |
+          echo "Сканирование кода на уязвимости с помощью Bandit..."
+          bandit -r ./src || echo "::warning::Bandit обнаружил потенциальные уязвимости в коде"
+      
+      - name: Generate security report
+        if: always()
+        run: |
+          echo "Генерация отчета о безопасности..."
+          
+          # Создаем директорию для отчетов
+          mkdir -p security-reports
+          
+          # Сохраняем результаты проверок
+          if [ -f requirements.txt ]; then
+            safety check -r requirements.txt --json > security-reports/safety-report.json 2>&1 || true
+          elif [ -f poetry.lock ]; then
+            pip install poetry
+            poetry export -f requirements.txt --output requirements-export.txt
+            safety check -r requirements-export.txt --json > security-reports/safety-report.json 2>&1 || true
+          fi
+          
+          bandit -r ./src -f json -o security-reports/bandit-report.json || true
+          
+          echo "✅ Отчеты о безопасности сохранены"
+      
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          name: security-reports
+          path: security-reports/
+          retention-days: 7
 
   docs:
     name: Build Documentation
@@ -193,47 +207,38 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Python
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          install-poetry: ${{ hashFiles('poetry.lock') != '' && 'true' || 'false' }}
+          install-dev-deps: 'true'
+        continue-on-error: true
+      
+      - name: Fallback Python setup
+        if: ${{ failure() }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
       
-      - name: Check if docs directory exists
-        id: check-docs
-        run: |
-          echo "Проверка наличия директории docs..."
-          if [ -d "docs" ]; then
-            echo "docs_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ Директория docs найдена"
-          else
-            echo "docs_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Директория docs не найдена, документация не будет собрана"
-          fi
-      
-      - name: Install dependencies
-        if: steps.check-docs.outputs.docs_exists == 'true'
+      - name: Fallback dependencies installation
+        if: ${{ failure() }}
         run: |
           echo "Установка зависимостей для сборки документации..."
           python -m pip install --upgrade pip
           
           # Установка зависимостей проекта
           if [ -f poetry.lock ]; then
-            echo "Обнаружен poetry.lock, устанавливаем Poetry..."
             curl -sSL https://install.python-poetry.org | python3 -
             echo "$HOME/.local/bin" >> $GITHUB_PATH
             export PATH="$HOME/.local/bin:$PATH"
-            
-            echo "Установка зависимостей через Poetry..."
             poetry config virtualenvs.create true
             poetry config virtualenvs.in-project true
             poetry install --no-interaction
-            echo "POETRY_AVAILABLE=true" >> $GITHUB_ENV
           elif [ -f requirements.txt ]; then
             pip install -r requirements.txt
-            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           elif [ -f pyproject.toml ]; then
             pip install .
-            echo "POETRY_AVAILABLE=false" >> $GITHUB_ENV
           fi
           
           # Установка зависимостей для документации
@@ -243,25 +248,22 @@ jobs:
           if [ -f "docs/requirements-docs.txt" ]; then
             pip install -r docs/requirements-docs.txt
           fi
-          
-          echo "✅ Зависимости для документации установлены"
       
       - name: Build documentation
-        if: steps.check-docs.outputs.docs_exists == 'true'
         run: |
-          echo "Сборка документации Sphinx..."
-          cd docs
-          if [ -f "Makefile" ]; then
-            make html
+          if [ -d "docs" ]; then
+            echo "Сборка документации..."
+            cd docs
+            make html || python -m sphinx.cmd.build -b html source build/html
+            echo "✅ Документация успешно собрана"
           else
-            sphinx-build -b html source build/html
+            echo "::warning::Директория docs не найдена, документация не будет собрана"
           fi
-          touch build/html/.nojekyll  # Добавляем .nojekyll для правильной работы с GitHub Pages
-          echo "✅ Документация успешно собрана"
       
-      - name: Deploy to GitHub Pages
-        if: steps.check-docs.outputs.docs_exists == 'true'
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Upload documentation
+        if: success() && hashFiles('docs/build/html/**') != ''
+        uses: actions/upload-artifact@v4
         with:
-          folder: docs/build/html
-          branch: gh-pages 
+          name: documentation
+          path: docs/build/html
+          retention-days: 7 
